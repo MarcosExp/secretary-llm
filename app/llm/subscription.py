@@ -15,11 +15,10 @@ Authentication: CLAUDE_CODE_OAUTH_TOKEN, created once with `claude setup-token`
 (valid for one year). Usage counts against the subscription's limits.
 """
 
-import re
 import tempfile
 
 from app.agent.loop import MAX_TURNS, REFUSAL_TEXT, max_turns_text
-from app.llm.base import Executor, LLMError, RunResult, Usage, resolve_model
+from app.llm.base import Executor, LLMError, RunResult, Usage, display_model, resolve_model
 
 SERVER = "secretary"
 NO_EFFORT_MODELS = {"claude-haiku-4-5"}
@@ -122,7 +121,7 @@ def usage_from(model_usage: dict | None) -> tuple[Usage, set[str]]:
     usage = Usage()
     models = set()
     for model, stats in (model_usage or {}).items():
-        models.add(re.sub(r"-\d{8}$", "", model))  # claude-haiku-4-5-20251001 -> claude-haiku-4-5
+        models.add(display_model(model))
         usage += Usage(
             input_tokens=stats.get("inputTokens", 0),
             output_tokens=stats.get("outputTokens", 0),

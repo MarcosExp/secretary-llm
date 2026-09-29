@@ -4,6 +4,7 @@ Messages and content blocks use the Anthropic Messages API shape as plain dicts,
 so any provider (real or fake) produces history the agent loop can append as-is.
 """
 
+import re
 from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
@@ -16,6 +17,11 @@ MODEL_ALIASES = {
 
 def resolve_model(name: str) -> str:
     return MODEL_ALIASES.get(name, name)
+
+
+def display_model(name: str) -> str:
+    """Drop the snapshot date some responses carry: claude-haiku-4-5-20251001 -> claude-haiku-4-5."""
+    return re.sub(r"-\d{8}$", "", name)
 
 
 class LLMError(Exception):

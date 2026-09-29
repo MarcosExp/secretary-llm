@@ -2,7 +2,7 @@
 
 import anthropic
 
-from app.llm.base import LLMError, LLMResponse, Usage, resolve_model
+from app.llm.base import LLMError, LLMResponse, Usage, display_model, resolve_model
 
 MAX_TOKENS = 16000
 # Models whose safety classifiers may decline a request: let the API retry it on a
@@ -53,7 +53,7 @@ class ApiProvider:
         return LLMResponse(
             content=[block.to_dict() for block in response.content],
             stop_reason=response.stop_reason,
-            model=response.model,
+            model=display_model(response.model),
             usage=Usage(
                 input_tokens=usage.input_tokens or 0,
                 output_tokens=usage.output_tokens or 0,

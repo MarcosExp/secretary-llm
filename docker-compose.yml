@@ -29,15 +29,18 @@ services:
       - ${SECRETARY_DATA_DIR:?set SECRETARY_DATA_DIR in .env}/db:/data
       - ${SECRETARY_DATA_DIR:?set SECRETARY_DATA_DIR in .env}/config:/config:ro
 
+  # Bucket settings are not required to start the stack, so the app can run before
+  # backups are configured. Without them this container exits with an error and keeps
+  # restarting, which shows in `docker compose ps`: backups never fail silently.
   litestream:
     <<: *hardening
     image: litestream/litestream:0.3.13
     command: replicate
     environment:
-      LITESTREAM_ACCESS_KEY_ID: ${LITESTREAM_ACCESS_KEY_ID:?set LITESTREAM_ACCESS_KEY_ID in .env}
-      LITESTREAM_SECRET_ACCESS_KEY: ${LITESTREAM_SECRET_ACCESS_KEY:?set LITESTREAM_SECRET_ACCESS_KEY in .env}
-      LITESTREAM_BUCKET: ${LITESTREAM_BUCKET:?set LITESTREAM_BUCKET in .env}
-      LITESTREAM_ENDPOINT: ${LITESTREAM_ENDPOINT:?set LITESTREAM_ENDPOINT in .env}
+      LITESTREAM_ACCESS_KEY_ID: ${LITESTREAM_ACCESS_KEY_ID:-}
+      LITESTREAM_SECRET_ACCESS_KEY: ${LITESTREAM_SECRET_ACCESS_KEY:-}
+      LITESTREAM_BUCKET: ${LITESTREAM_BUCKET:-}
+      LITESTREAM_ENDPOINT: ${LITESTREAM_ENDPOINT:-}
       LITESTREAM_REGION: ${LITESTREAM_REGION:-auto}
     volumes:
       - ${SECRETARY_DATA_DIR:?set SECRETARY_DATA_DIR in .env}/db:/data
