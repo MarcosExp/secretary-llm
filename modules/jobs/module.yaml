@@ -1,0 +1,9 @@
+name: jobs
+description: >
+  Job search: applications and companies of interest with stage (researching, to
+  apply, applied, assessment, interview, final, offer, rejected), deadlines,
+  follow-ups, next steps and tasks linked to an application. Use it for anything
+  about internships, job offers, applications and interviews.
+version: 1
+model: haiku
+reads: [core_tasks]

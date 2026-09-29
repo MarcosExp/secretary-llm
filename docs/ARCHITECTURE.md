@@ -85,7 +85,7 @@ Rules enforced by the database itself:
 
 **Example data:** each module can ship a `seed_example.sql` with fictional rows (dates relative to today). `secretary db seed-example` loads them, only into an empty database.
 
-Later modules: `training_workouts (date, kind, details)` and `jobs_applications (company, role, url, status, applied_at, next_step, notes)`.
+The `jobs` module owns `jobs_applications` (company, role, stage, priority, deadlines, follow-ups, visa, referral, next step) and `jobs_application_tasks`. Imported rows keep their origin in `external_ref` (e.g. `notion:<page id>`), so imports can be re-run. Later module: `training_workouts (date, kind, details)`.
 
 ## 4. Memory: the wiki
 
@@ -121,6 +121,8 @@ Example rules (fictional):
 | calendar | `calendar_list_events` | Read (Google Calendar) |
 | calendar | `calendar_create_events` | Write; confirmation when creating more than one |
 | calendar | `calendar_move_events` | Write; always confirmed. Refuses events with other attendees |
+| jobs | `list_applications`, `get_application` | Read |
+| jobs | `add_application`, `update_application`, `add_application_task` | Small write |
 | *planned* | `plan_week` | Solver proposal, confirmation before writing to the calendar |
 | *planned* | `wiki_read`, `wiki_search`, `wiki_write` | Read / write with git commit |
 
@@ -260,7 +262,7 @@ Tests use `ScriptedProvider` with our loop, and a fake `query` for the SDK runne
 │   ├── core/
 │   └── studies/
 ├── examples/         # fictional wiki, config and seed
-├── migrate/          # Notion export (IDs from environment)
+├── app/importers/    # Notion import (mapping in the private data dir)
 ├── evals/            # synthetic cases and metrics
 ├── tests/
 └── docs/             # ARCHITECTURE.md, OPERATIONS.md

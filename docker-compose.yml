@@ -24,6 +24,7 @@ services:
       SECRETARY_CONFIG: /config/config.yaml
       GOOGLE_CALENDAR_ID: ${GOOGLE_CALENDAR_ID:-}
       GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_CALENDAR_ID:+/secrets/google-service-account.json}
+      NOTION_TOKEN: ${NOTION_TOKEN:-}
       WHISPER_MODEL: ${WHISPER_MODEL:-small}
       WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-}
       APP_HOST: 0.0.0.0   # inside the container; the host side is bound to 127.0.0.1 below

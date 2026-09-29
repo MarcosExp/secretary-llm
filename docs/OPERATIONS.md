@@ -156,6 +156,33 @@ Needs your confirmation (#4):
 
 The agent never deletes calendar events, never moves events that have other attendees, and never sends invitations. Events it creates carry a private marker, so later features can tell them apart from yours.
 
+## Importing from Notion
+
+`secretary import notion` copies courses, study units, job applications and tasks from Notion databases, including the links between them (task → course, task → application).
+
+1. **Integration:** at [notion.so/profile/integrations](https://www.notion.so/profile/integrations), create an **internal** integration with **read content** capability only, and copy its secret into `.env`:
+   ```
+   NOTION_TOKEN=<secret>
+   ```
+2. **Access:** in Notion, open the page that contains your databases, then **⋯ → Connections → add the integration**. Pages below it are shared too.
+3. **Mapping:** copy `examples/notion.example.yaml` to `../secretary-data/config/notion.yaml` and fill in:
+   - each database id (the 32 characters in its URL);
+   - your property names;
+   - how your select options map to Secretary's values.
+
+   A mapping like `"Blocked": "todo | Blocked"` sets the status to `todo` and keeps "Blocked" in the notes.
+4. **Preview, then import:**
+   ```sh
+   docker compose run --rm --no-deps app secretary import notion --dry-run
+   docker compose run --rm --no-deps app secretary import notion
+   ```
+
+What happens:
+- The import runs in one transaction: all or nothing.
+- Every row remembers its Notion page (`external_ref`). Running the import again only adds pages that are new since last time and never overwrites anything, so you can keep using Notion during the transition.
+- Values with no mapping get a default and a warning, and the original value is kept in the notes.
+- Notion is only read, never modified.
+
 ## Backups
 
 - **What:** the SQLite database, replicated continuously, with 30 days of point-in-time history and a daily snapshot.

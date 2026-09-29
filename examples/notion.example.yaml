@@ -1,0 +1,116 @@
+# Notion import mapping. Copy to <SECRETARY_DATA_DIR>/config/notion.yaml and adapt it.
+#
+# database_id: the 32-character id in the database URL.
+# properties:  Secretary field -> your Notion property name. Leave out what you don't have.
+# values:      your select option -> Secretary value. "value | note" also adds the note
+#              to the record, for options Secretary has no exact equivalent for.
+# Quote option names such as "Yes"/"No": unquoted, YAML reads them as booleans.
+# Any section can be removed to skip that database.
+
+notion:
+  courses:
+    database_id: 00000000000000000000000000000000
+    properties:
+      title: Course
+      program: Program          # select; programs are created as needed
+      status: Status
+      exam_date: Exam date
+      ects: ECTS
+      term: Term
+      grade: Grade
+      notes: Notes
+    values:
+      status:
+        "Enrolled": enrolled
+        "Passed": passed
+        "Failed": "enrolled | Failed a previous attempt"
+        "Planned": "archived | Planned for a later term"
+
+  study_units:
+    database_id: 00000000000000000000000000000000
+    properties:
+      title: Topic
+      course: Course            # relation to the courses database
+      position: Unit            # number: order within the course
+      start: Start
+      end: End
+      estimate_h: Estimate (h)
+      status: Status
+      confidence: Confidence
+      weight: Weight
+      notes: Notes
+    values:
+      status:
+        "Not started": pending
+        "Studying": in_progress
+        "Reviewed": "in_progress | Reviewed"
+        "Exam-ready": done
+      confidence:                # 1-5
+        "Shaky": 2
+        "Getting there": 3
+        "Solid": 5
+
+  applications:
+    database_id: 00000000000000000000000000000000
+    properties:
+      title: Company
+      role: Role
+      program: Program
+      stage: Stage
+      priority: Priority
+      location: Location
+      visa: Visa
+      referral: Referral        # checkbox
+      process_open: Open        # select
+      link: Link
+      contact: Contact
+      applied_on: Applied on
+      deadline: Deadline
+      follow_up_by: Follow up by
+      next_step: Next step
+    values:
+      stage:
+        "Researching": researching
+        "To apply": to_apply
+        "Applied": applied
+        "Coding test": assessment
+        "Interview": interview
+        "Final round": final
+        "Offer": offer
+        "Rejected": rejected
+        "No response": no_response
+      priority:
+        "Dream": dream
+        "Strong fit": strong
+        "Backup": backup
+      visa:
+        "Sponsors visa": sponsors
+        "EU only": eu_only
+        "Unclear": unclear
+        "No sponsorship": no_sponsorship
+      process_open:
+        "Yes": true
+        "No": false
+
+  tasks:
+    database_id: 00000000000000000000000000000000
+    properties:
+      title: Task
+      status: Status
+      priority: Priority
+      area: Area                # select; areas are created with the same names
+      due: Due
+      estimate_h: Estimate (h)
+      notes: Notes
+      course: Course            # relation: links the task to its course
+      application: Application  # relation: links the task to its application
+    values:
+      status:
+        "Not started": todo
+        "In progress": doing
+        "Blocked": "todo | Blocked"
+        "Done": done
+      priority:
+        "High": P1
+        "Medium": P2
+        "Low": P3

@@ -6,6 +6,7 @@
     secretary ask "add submit the lab report on Friday"
     secretary chat
     secretary pending | confirm 3 | reject 3
+    secretary import notion [--dry-run]
 """
 
 import argparse
@@ -17,6 +18,7 @@ from app import clock
 from app.db import connect, db_path
 from app.db.migrations import MigrationError, migrate
 from app.db.seed import SeedError, seed_example
+from app.importers.notion import NotionImportError
 from modules.core import repo
 from modules.core.repo import UNSET, NotFound, Task
 
@@ -87,6 +89,11 @@ def build_parser() -> argparse.ArgumentParser:
     db = groups.add_parser("db", help="database maintenance").add_subparsers(dest="command", required=True)
     db.add_parser("migrate", help="apply pending migrations")
     db.add_parser("seed-example", help="load fictional example data into an empty database")
+
+    importer = groups.add_parser("import", help="import data from other tools").add_subparsers(
+        dest="command", required=True)
+    notion = importer.add_parser("notion", help="import from Notion (mapping in config/notion.yaml)")
+    notion.add_argument("--dry-run", action="store_true", help="show what would be imported, change nothing")
 
     area = groups.add_parser("area", help="manage areas").add_subparsers(dest="command", required=True)
     area.add_parser("list", help="list active areas")
@@ -221,6 +228,20 @@ def run_agent(args: argparse.Namespace) -> int:
         conn.close()
 
 
+def import_notion(conn: sqlite3.Connection, dry_run: bool) -> str:
+    import os
+
+    from app.importers import notion
+
+    token = os.getenv("NOTION_TOKEN")
+    if not token:
+        raise ValueError("set NOTION_TOKEN (a Notion internal integration token) to import")
+    mappings = notion.load_mapping(notion.config_path())
+    report = notion.run(conn, notion.NotionClient(token), mappings, dry_run=dry_run)
+    header = "Dry run, nothing was saved:" if dry_run else "Imported from Notion:"
+    return f"{header}\n{report.summary()}"
+
+
 def run(args: argparse.Namespace, conn: sqlite3.Connection) -> str:
     match args.group, args.command:
         case "db", "migrate":
@@ -228,6 +249,8 @@ def run(args: argparse.Namespace, conn: sqlite3.Connection) -> str:
         case "db", "seed-example":
             modules = seed_example(conn)
             return f"Example data loaded for: {', '.join(modules)}."
+        case "import", "notion":
+            return import_notion(conn, args.dry_run)
         case "area", "list":
             return "\n".join(repo.list_areas(conn)) or "No areas."
         case "area", "add":
@@ -284,7 +307,8 @@ def main(argv: list[str] | None = None) -> int:
         migrate(conn)
         print(run(args, conn))
         return 0
-    except (NotFound, ValueError, MigrationError, SeedError, sqlite3.IntegrityError) as exc:
+    except (NotFound, ValueError, MigrationError, SeedError, sqlite3.IntegrityError,
+            NotionImportError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     finally:
