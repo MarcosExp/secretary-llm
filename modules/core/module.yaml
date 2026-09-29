@@ -1,0 +1,8 @@
+name: core
+description: >
+  Tasks and life areas. Adds, lists, updates, completes and archives tasks with
+  priority (P1 today, P2 this week, P3 someday), area, due date, time estimate
+  and notes. Use it for anything about to-dos, deadlines and what is pending.
+version: 1
+model: haiku
+reads: []

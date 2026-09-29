@@ -1,0 +1,8 @@
+name: studies
+description: >
+  Studies: courses, exam dates, study units (topics) with estimated and done hours,
+  confidence per unit, and tasks linked to a course such as assignments. Use it to
+  log study time, check study progress or exams, and add course work.
+version: 1
+model: haiku
+reads: [core_tasks]

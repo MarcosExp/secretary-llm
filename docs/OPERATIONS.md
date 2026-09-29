@@ -72,6 +72,29 @@ docker compose exec app secretary task list
 docker compose exec app secretary --help
 ```
 
+### Talking to the agent
+
+**With a Claude subscription (Pro/Max):**
+
+1. On any machine with a browser and Claude Code installed, run `claude setup-token`. It prints a one-year token and does not save it anywhere.
+2. Put it in the server's `.env` and select the provider:
+   ```
+   LLM_PROVIDER=subscription
+   CLAUDE_CODE_OAUTH_TOKEN=<token>
+   ```
+3. Recreate the container: `docker compose up -d --build app`.
+
+Agent usage shares the plan's limits with your chat and Claude Code use. Do not set `ANTHROPIC_API_KEY` at the same time: it takes precedence over the token.
+
+**With an API key:** set `LLM_PROVIDER=api` and `ANTHROPIC_API_KEY` instead, and set a monthly spend limit in the Anthropic Console.
+
+```sh
+docker compose exec app secretary ask "add submit the lab report next Friday, about 3 hours" -v
+docker compose exec -it app secretary chat
+```
+
+`-v` lists the tool calls. Every reply ends with the number of tool calls, the tokens used and the models involved. The same data is stored in `core_agent_log`.
+
 Avoid opening the live database from the host while the stack runs. On Docker Desktop (Windows/macOS), SQLite locks are not reliable across the bind mount.
 
 To try the project with fictional data, point `SECRETARY_DATA_DIR` at an empty directory and run `secretary db seed-example`. It refuses to run on a database that already has tasks.

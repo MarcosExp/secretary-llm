@@ -112,18 +112,17 @@ Example rules (fictional):
 
 ## 5. Agent tools
 
-| Tool | Type | Confirmation |
+| Module | Tools | Type |
 |---|---|---|
-| `list_tasks(filters)` | Read | No |
-| `add_task`, `update_task`, `complete_task`, `archive_task` | Small write | No |
-| `list_courses`, `study_progress`, `log_study_hours` | Read / small write | No |
-| `calendar_read(range)` | Read | No |
-| `calendar_create_event`, `calendar_move_event` | Write | Yes, when several events |
-| `plan_week(constraints)` | Solver, returns a proposal | Yes, before writing to the calendar |
-| `wiki_read(path)`, `wiki_search(query)` | Read | No |
-| `wiki_write(path, content)` | Write with git commit | No (reversible) |
+| core | `list_tasks`, `list_areas` | Read |
+| core | `add_task`, `update_task`, `complete_task`, `archive_task`, `add_area` | Small write |
+| studies | `list_courses`, `study_progress`, `list_course_tasks` | Read |
+| studies | `log_study_hours`, `set_unit_status`, `add_course`, `update_course`, `add_unit`, `add_course_task` | Small write |
+| *planned* | `calendar_read`, `calendar_create_event`, `calendar_move_event` | Write, confirmation when several events |
+| *planned* | `plan_week` | Solver proposal, confirmation before writing to the calendar |
+| *planned* | `wiki_read`, `wiki_search`, `wiki_write` | Read / write with git commit |
 
-All tools validate input with Pydantic. There is no delete tool.
+Every tool's input schema is generated from its Python signature and validated with Pydantic before it runs. Invalid arguments and domain errors (unknown area, ambiguous course) go back to the model as `is_error` tool results, so it can correct itself. There is no delete tool.
 
 ## 6. Module system
 
@@ -132,65 +131,85 @@ An **orchestrator** talks to the user and delegates to **modules**: specialized 
 ```mermaid
 flowchart TB
     U[User] --> O[Orchestrator]
-    O --> C[core: tasks, calendar, wiki]
-    O --> E[studies]
-    O --> T[training]
-    O --> J[jobs]
-    O --> X[new module…]
-    C & E & T & J & X --> K[(SQLite: per-module tables)]
-    C & E & T & J & X --> W[Wiki]
+    O -- delegate_to_core --> C[core subagent]
+    O -- delegate_to_studies --> E[studies subagent]
+    O -- delegate_to_x --> X[new module…]
+    E -- ctx.call core.add_task --> C
+    C & E & X --> G{{SQLite authorizer}}
+    G --> K[(per-module tables)]
 ```
 
 ```
-modules/jobs/
+modules/<name>/
 ├── module.yaml        # manifest
-├── prompt.md          # generic subagent instructions
-├── tools.py           # tools declared with @tool
-├── migrations/001_init.sql
-├── jobs.py            # (optional) scheduled jobs
-└── evals/             # (optional) synthetic test cases
+├── prompt.md          # subagent instructions (generic; personal rules come from the wiki)
+├── tools.py           # functions decorated with @tool
+├── migrations/        # NNN_*.sql, tables prefixed <name>_
+└── seed_example.sql   # (optional) fictional demo data
 ```
 
 ```yaml
 # module.yaml
-name: jobs
-description: >
-  Finds job offers, scores them against the user's profile and
-  tracks applications.
+name: studies
+description: >          # what the orchestrator sees as the delegate tool's description
+  Studies: courses, exam dates, study units ...
 version: 1
-model: haiku
-reads: [core_tasks, core_schedule_blocks]
-schedule:
-  - cron: "0 9 * * 6"
-    job: weekly_sweep
+model: haiku            # haiku | sonnet | opus, or a full model ID
+effort: low             # optional, for models that support it
+reads: [core_tasks]     # other modules' tables this module may read
 ```
 
 ```python
-from secretary.sdk import tool, ModuleContext
+from app.sdk import ModuleContext, tool
 
-@tool(description="Add a job offer to the tracker")
-def add_offer(ctx: ModuleContext, company: str, role: str, url: str) -> dict:
-    return ctx.db.insert("jobs_offers", company=company, role=role, url=url)
+@tool("Create a task for a course and link it to the course.")
+def add_course_task(ctx: ModuleContext, course: str, title: str, due: date | None = None) -> dict:
+    course_id = repo.course_id(ctx.db, course)
+    task = ctx.call("core.add_task", title=title, due=due)   # the owner writes its own table
+    repo.link_task(ctx.db, course_id, task.id)
+    return {"course_id": course_id, "task": task}
 ```
 
-**Loading:** at startup the core scans `modules/*/module.yaml`, applies pending migrations and registers tools. The orchestrator sees a single `delegate_to_<module>(task)` tool per module, so its context does not grow with each new module. Each module is toggled with `enabled: true/false` in the config.
+**Loading:** on every request the agent reads `modules/*/module.yaml`, validates it, loads `prompt.md` and the `@tool` functions in `tools.py`. The orchestrator sees one `delegate_to_<module>(task)` tool per module, so its context does not grow with each module's tools. `config/config.yaml` in the data directory can disable a module or change its model and effort.
 
-**Database access:** each module owns its tables (`<module>_*`). It can only read other modules' tables declared in `reads`, never writes them (it calls the owning module's tool instead), and only changes the schema through versioned migrations. `ModuleContext.db` rejects any query outside these rules. A subagent may *propose* a migration (`propose_migration(sql)`), which stays pending until the user approves it.
+**Database access** is enforced by SQLite, not by convention. All tools share one connection with an authorizer callback that knows which module is acting. A module may read and write its own tables (`<module>_*`) and read the tables listed in `reads`. Everything else is rejected before the statement runs:
+- writes to another module's tables (it must call that module's tool through `ctx.call`);
+- any `DELETE`;
+- schema changes and pragmas.
 
-**MCP:** modules are designed so they can later be exposed as MCP servers.
+The statement cache is disabled on that connection, because SQLite only checks a statement when it is prepared.
+
+**Transactions:** one per tool call, including nested `ctx.call`s. If any step fails, nothing from that call is kept.
+
+**Planned:** a subagent may *propose* a migration (`propose_migration(sql)`), which stays pending until the user approves it. Modules can later be exposed as MCP servers.
 
 ## 7. LLM layer and costs
 
 ```python
-class LLMProvider(Protocol):
-    def run(self, system: str, messages: list, tools: list) -> AgentResult: ...
-
-PROVIDER = os.getenv("LLM_PROVIDER", "fake")   # fake | api | subscription
+class AgentRunner(Protocol):
+    def run(self, *, model, system, messages, tools, execute, effort=None, max_turns=12) -> RunResult: ...
 ```
 
-- Tokens per call are logged in `core_agent_log` from day one.
-- Fixed reminders and summaries come from templates and SQL, with no LLM call.
-- With the API: Haiku for routine commands, Sonnet/Opus for planning, prompt caching for `index.md` + `rules.md`, and a monthly spend limit.
+Every agent run (the orchestrator or a module) goes through an `AgentRunner`, selected with `LLM_PROVIDER`:
+
+| Provider | Runner | Auth | Cost |
+|---|---|---|---|
+| `fake` (default) | Our loop over a canned provider | None | Free, offline |
+| `subscription` | Claude Agent SDK | `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` | Counts against the Claude plan's limits |
+| `api` | Our loop (`app/agent/loop.py`) over the Anthropic SDK | `ANTHROPIC_API_KEY` | Per token |
+
+With the **subscription**, the Agent SDK runs Claude Code's loop in a subprocess, locked down to act as a plain model:
+- built-in tools (files, shell, web) are removed;
+- no user or project settings are loaded;
+- only our tools are allowed, and anything else is denied without prompting.
+
+Our tools reach it as an in-process MCP server whose handlers call the same executor as the API path, so module permissions and transactions behave identically. Multi-turn chat history is passed as a transcript.
+
+Tests use `ScriptedProvider` with our loop, and a fake `query` for the SDK runner.
+- **Models:** Haiku 4.5 by default for the orchestrator and the modules. Sonnet/Opus are chosen per module in the manifest or `config.yaml`. With Claude Opus 5.5 / Sonnet 5.5, refused requests are retried server-side on a fallback model.
+- **Caching:** tools and system prompts are static. The date goes in the user message, so the cached prefix does not change between calls.
+- **Token logging:** every request logs the user input, every tool call and the summed tokens of all model calls to `core_agent_log`, including cache reads and writes.
+- Fixed reminders and summaries will come from templates and SQL, with no LLM call.
 
 ## 8. Weekly planner
 

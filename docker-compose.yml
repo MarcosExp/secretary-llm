@@ -16,11 +16,18 @@ services:
     build: .
     environment:
       SECRETARY_DB_PATH: /data/secretary.db
+      SECRETARY_TIMEZONE: ${SECRETARY_TIMEZONE:-UTC}
+      LLM_PROVIDER: ${LLM_PROVIDER:-fake}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SECRETARY_ORCHESTRATOR_MODEL: ${SECRETARY_ORCHESTRATOR_MODEL:-}   # empty: config.yaml, else haiku
+      SECRETARY_CONFIG: /config/config.yaml
       APP_HOST: 0.0.0.0   # inside the container; the host side is bound to 127.0.0.1 below
     ports:
       - "127.0.0.1:${APP_PORT:-8000}:8000"
     volumes:
       - ${SECRETARY_DATA_DIR:?set SECRETARY_DATA_DIR in .env}/db:/data
+      - ${SECRETARY_DATA_DIR:?set SECRETARY_DATA_DIR in .env}/config:/config:ro
 
   litestream:
     <<: *hardening

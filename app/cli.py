@@ -3,6 +3,8 @@
     secretary task add "Submit assignment" -p P1 -a Studies -d 2027-01-15 -e 3
     secretary task list [--all | -s done] [-a Studies] [--due-before tomorrow]
     secretary task done 4
+    secretary ask "add submit the lab report on Friday"
+    secretary chat
 """
 
 import argparse
@@ -10,6 +12,7 @@ import sqlite3
 import sys
 from datetime import date, timedelta
 
+from app import clock
 from app.db import connect, db_path
 from app.db.migrations import MigrationError, migrate
 from app.db.seed import SeedError, seed_example
@@ -21,7 +24,7 @@ def parse_date(value: str) -> date:
     """ISO date, or 'today' / 'tomorrow'. Anything fuzzier is the agent's job."""
     keywords = {"today": 0, "tomorrow": 1}
     if value.lower() in keywords:
-        return date.today() + timedelta(days=keywords[value.lower()])
+        return clock.today() + timedelta(days=keywords[value.lower()])
     try:
         return date.fromisoformat(value)
     except ValueError:
@@ -125,7 +128,56 @@ def build_parser() -> argparse.ArgumentParser:
         cmd = task.add_parser(name, help=help_text)
         cmd.add_argument("id", type=int)
 
+    ask = groups.add_parser("ask", help="send one request to the agent")
+    ask.add_argument("text")
+    ask.add_argument("-v", "--verbose", action="store_true", help="show the tool calls made")
+    chat = groups.add_parser("chat", help="talk to the agent (empty line or Ctrl+D to exit)")
+    chat.add_argument("-v", "--verbose", action="store_true", help="show the tool calls made")
+
     return parser
+
+
+def format_reply(reply, verbose: bool) -> str:
+    lines = [reply.text]
+    if verbose:
+        for call in reply.tool_calls:
+            status = "" if call.ok else "  [failed]"
+            lines.append(f"  - {call.module}.{call.tool}({call.arguments}){status}")
+    usage = reply.usage
+    lines.append(
+        f"[{len(reply.tool_calls)} tool calls, {usage.total_input_tokens} in / "
+        f"{usage.output_tokens} out tokens, {', '.join(sorted(reply.models)) or '-'}]"
+    )
+    return "\n".join(lines)
+
+
+def run_agent(args: argparse.Namespace) -> int:
+    from app.agent import build_agent, open_agent_db
+    from app.llm import LLMError
+
+    conn = open_agent_db()
+    try:
+        agent = build_agent(conn)
+        if args.group == "ask":
+            print(format_reply(agent.ask(args.text), args.verbose))
+            return 0
+        history: list[dict] = []
+        while True:
+            try:
+                text = input("> ").strip()
+            except EOFError:
+                break
+            if not text:
+                break
+            reply = agent.ask(text, history)
+            history = reply.history
+            print(format_reply(reply, args.verbose))
+        return 0
+    except LLMError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        conn.close()
 
 
 def run(args: argparse.Namespace, conn: sqlite3.Connection) -> str:
@@ -184,6 +236,8 @@ def run(args: argparse.Namespace, conn: sqlite3.Connection) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.group in ("ask", "chat"):
+        return run_agent(args)
     conn = connect()
     try:
         migrate(conn)

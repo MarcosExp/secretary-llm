@@ -1,22 +1,20 @@
 """Data access for core areas and tasks.
 
-Functions do not commit: the caller owns the transaction (`with conn:`), so one
-agent tool call or CLI command is one transaction. There is no delete; tasks
-are completed or archived.
+Functions take a connection (or a module's ctx.db) and do not commit: the caller
+owns the transaction, so one agent tool call or CLI command is one transaction.
+There is no delete; tasks are completed or archived.
 """
 
 import sqlite3
 from dataclasses import dataclass
 from datetime import date
 
+from app.sdk.errors import NotFound
+
 PRIORITIES = ("P1", "P2", "P3")
 OPEN_STATUSES = ("todo", "doing")
 STATUSES = (*OPEN_STATUSES, "done", "archived")
 UNSET = object()  # distinguishes "not given" from "clear this field" (None) in update_task
-
-
-class NotFound(LookupError):
-    pass
 
 
 @dataclass(frozen=True)
