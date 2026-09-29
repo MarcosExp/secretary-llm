@@ -22,19 +22,31 @@ def add_area(ctx: ModuleContext, name: str) -> dict:
     return {"id": repo.add_area(ctx.db, name), "name": name.strip()}
 
 
+def _summary(task: Task) -> dict:
+    notes = task.notes if not task.notes or len(task.notes) <= 80 else task.notes[:79].rstrip() + "…"
+    return {"id": task.id, "title": task.title, "status": task.status, "priority": task.priority,
+            "area": task.area, "due": task.due, "estimate_h": task.estimate_h, "notes": notes}
+
+
 @tool("""
-    List tasks ordered by priority, then due date (undated last).
-    By default only open tasks (todo, doing) are returned.
+    List tasks as short summaries, ordered by priority, then due date (undated last).
+    By default only open tasks (todo, doing) are returned. Use get_task for full notes.
 """)
 def list_tasks(
     ctx: ModuleContext,
     statuses: Annotated[list[Status] | None, Field(description="Defaults to todo and doing")] = None,
     area: str | None = None,
     due_before: Annotated[date | None, Field(description="Only tasks due on or before this date")] = None,
-) -> list[Task]:
-    return repo.list_tasks(
+) -> list[dict]:
+    tasks = repo.list_tasks(
         ctx.db, statuses=tuple(statuses or repo.OPEN_STATUSES), area=area, due_before=due_before
     )
+    return [_summary(task) for task in tasks]
+
+
+@tool("Show one task with all its details.")
+def get_task(ctx: ModuleContext, task_id: int) -> Task:
+    return repo.get_task(ctx.db, task_id)
 
 
 @tool("Create a task.")

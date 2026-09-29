@@ -41,6 +41,25 @@ class Application:
         return cls(**values)
 
 
+def clip(text: str | None, limit: int) -> str | None:
+    if text is None or len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
+def summary(app: Application) -> dict:
+    """The fields needed to scan a list; get() has the rest.
+
+    A real job search easily has dozens of open applications, and every list result
+    is read by the module's model and then summarized for the orchestrator.
+    """
+    return {
+        "id": app.id, "company": app.company, "role": app.role, "stage": app.stage,
+        "priority": app.priority, "deadline": app.deadline, "follow_up_by": app.follow_up_by,
+        "next_step": clip(app.next_step, 80),
+    }
+
+
 def _iso(value):
     return value.isoformat() if isinstance(value, date) else value
 

@@ -22,11 +22,12 @@ def _id(ctx: ModuleContext, application_id: int | None, company: str | None) -> 
 
 
 @tool("""
-    List job applications, soonest deadline or follow-up first. By default only open
-    ones (not rejected, no response or archived).
+    List job applications as short summaries, soonest deadline or follow-up first. By
+    default only open ones (not rejected, no response or archived). Use get_application
+    for the full record (link, contact, visa, notes…).
 """)
-def list_applications(ctx: ModuleContext, stages: list[Stage] | None = None) -> list[repo.Application]:
-    return repo.list_applications(ctx.db, tuple(stages) if stages else None)
+def list_applications(ctx: ModuleContext, stages: list[Stage] | None = None) -> list[dict]:
+    return [repo.summary(a) for a in repo.list_applications(ctx.db, tuple(stages) if stages else None)]
 
 
 @tool("Show one application with its open tasks.")
