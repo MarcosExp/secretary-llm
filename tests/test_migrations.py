@@ -20,7 +20,9 @@ def tables(conn):
 def test_real_migrations_apply_and_are_idempotent(tmp_path):
     conn = connect(tmp_path / "db.sqlite")
     applied = migrate(conn)
-    assert [(m.module, m.version) for m in applied] == [("core", 1), ("studies", 1)]
+    order = [(m.module, m.version) for m in applied]
+    assert order[0] == ("core", 1) and order == sorted(order, key=lambda m: (m[0] != "core", m))
+    assert {("core", 2), ("studies", 1)} <= set(order)
     assert {"core_tasks", "core_areas", "studies_courses", "studies_course_tasks"} <= tables(conn)
     assert migrate(conn) == []
 

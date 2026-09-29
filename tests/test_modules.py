@@ -44,6 +44,9 @@ def test_real_modules_load():
     assert {"core", "studies"} <= set(modules)
     assert "add_task" in modules["core"].tools
     assert modules["studies"].reads == frozenset({"core_tasks"})
+    # Calendar tools live in their own module, so task requests don't carry their schemas.
+    assert "calendar_move_events" in modules["calendar"].tools
+    assert not any(name.startswith("calendar_") for name in modules["core"].tools)
 
 
 def test_a_module_is_just_a_folder(tmp_path):

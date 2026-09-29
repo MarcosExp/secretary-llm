@@ -62,6 +62,24 @@ docker compose -f docker-compose.yml -f compose.tailscale.yml up -d --build
 
 The app is at `https://secretary.<tailnet>.ts.net`.
 
+## Web app (PWA)
+
+Open the app's address in the phone's browser:
+- through Tailscale: `https://<server>.<tailnet>.ts.net:8443`;
+- on the server itself: `http://localhost:8000`.
+
+Then use **Add to Home screen** (Android) or **Share → Add to Home Screen** (iOS) to install it.
+
+- **Text:** type and send. The conversation is kept on the server; **New chat** starts a fresh one.
+- **Voice:** tap the microphone, speak, and tap it again. The recording is transcribed on the server with faster-whisper and deleted right after; only the text is kept. The first recording after a restart takes a few extra seconds while the model loads.
+- **Confirmations:** proposals appear as cards with **Confirm / Discard**. They work exactly like `secretary confirm/reject`.
+
+The microphone only works over HTTPS or on `localhost`, so use the Tailscale HTTPS address on the phone.
+
+There is no login: access is limited to your tailnet. Requests that change data must carry an `X-Secretary: 1` header, which the app sends. Other websites cannot add that header without a CORS permission the server never gives, so a page you visit cannot act on the app through your browser.
+
+**Speech model:** it is downloaded on first use into `secretary-data/models/` (~500 MB for `small`). If transcription is poor, try `WHISPER_LANGUAGE=es` (skips language detection) or `WHISPER_MODEL=medium`, which is slower and more accurate.
+
 ## Command-line interface
 
 Run the CLI inside the `app` container so it uses the same database file as the running app:
@@ -98,6 +116,45 @@ docker compose exec -it app secretary chat
 Avoid opening the live database from the host while the stack runs. On Docker Desktop (Windows/macOS), SQLite locks are not reliable across the bind mount.
 
 To try the project with fictional data, point `SECRETARY_DATA_DIR` at an empty directory and run `secretary db seed-example`. It refuses to run on a database that already has tasks.
+
+## Google Calendar
+
+The agent uses a Google **service account**, a technical account that you share your calendar with. It needs no browser on the server, its access never expires, and it can only reach the calendars you share with it.
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create a project (any name).
+2. **APIs & Services → Library:** enable **Google Calendar API**.
+3. **IAM & Admin → Service Accounts:** create a service account. It needs no roles.
+4. Open the service account, go to **Keys → Add key → JSON**, and save the file as `../secretary-data/secrets/google-service-account.json`.
+   - On Linux, also run `chmod 600` on it and `chown 1000:1000` so the app can read it.
+   - The key only gives access to what you share in the next step. Treat it like a password anyway.
+5. In **Google Calendar (web) → Settings → your calendar → Share with specific people**, add the service account's email (`…@….iam.gserviceaccount.com`) with **Make changes to events**.
+6. In the same page, under **Integrate calendar**, copy the **Calendar ID**. For your main calendar, it is your account's email. Set it in `.env`:
+   ```
+   GOOGLE_CALENDAR_ID=<calendar id>
+   ```
+7. Run `docker compose up -d app`, then:
+   ```sh
+   docker compose exec app secretary ask "what do I have on the calendar this week?"
+   ```
+
+### Confirmations
+
+Changes that need your approval are not run by the agent. They are stored and shown with an ID:
+- moving events;
+- creating several events at once.
+
+```
+Needs your confirmation (#4):
+  Move 'Study block' (Thu 2026-10-01 17:00-18:00) to Fri 2026-10-02 18:00-19:00
+  -> secretary confirm 4   |   secretary reject 4
+```
+
+- `secretary confirm 4` runs the stored call exactly as shown, without the model.
+- `secretary reject 4` discards it.
+- In `secretary chat`, you are asked right away.
+- `secretary pending` lists open proposals. They expire after 24 hours.
+
+The agent never deletes calendar events, never moves events that have other attendees, and never sends invitations. Events it creates carry a private marker, so later features can tell them apart from yours.
 
 ## Backups
 

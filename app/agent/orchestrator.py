@@ -3,6 +3,10 @@
 The orchestrator only sees one `delegate_to_<module>` tool per module, so its context
 does not grow with every tool a module adds. Each delegation runs the module's own
 subagent loop with the module's prompt, model and tools.
+
+Changes that need the user's approval come back as pending actions. The interface
+shows them and calls confirm() or reject(); confirm() runs the stored call directly,
+without the model.
 """
 
 import dataclasses
@@ -11,6 +15,8 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
+
+from pydantic import BaseModel
 
 from app import clock
 from app.llm.base import AgentRunner, RunResult, Usage
@@ -24,6 +30,16 @@ MODULE_BASE_PROMPT = (PROMPTS / "module_base.md").read_text(encoding="utf-8").st
 
 # Errors a tool reports back to the model so it can correct itself. Anything else is a bug.
 RECOVERABLE = (NotFound, ValueError, ToolError, AccessDenied, sqlite3.IntegrityError)
+PENDING_EXPIRY = "-24 hours"  # SQLite datetime modifier: older proposals can no longer be confirmed
+
+
+@dataclass
+class PendingAction:
+    id: int
+    summary: str
+    module: str
+    tool: str
+    created_at: str
 
 
 @dataclass
@@ -33,18 +49,20 @@ class Reply:
     tool_calls: list[ToolCall]
     models: set[str] = field(default_factory=set)
     usage: Usage = field(default_factory=Usage)
+    pending: list[PendingAction] = field(default_factory=list)
 
 
 class Agent:
     def __init__(self, runner: AgentRunner, modules: dict[str, Module],
-                 conn: sqlite3.Connection, model: str):
+                 conn: sqlite3.Connection, model: str, services: dict | None = None):
         self.runner = runner
         self.modules = modules
         self.conn = conn
         self.model = model
+        self.services = services or {}
 
     def ask(self, text: str, history: list[dict] | None = None) -> Reply:
-        registry = Registry(self.modules, self.conn)
+        registry = Registry(self.modules, self.conn, self.services)
         reply = Reply(text="", history=[], tool_calls=registry.calls)
 
         def delegate(tool_name: str, arguments: dict) -> tuple[str, bool]:
@@ -70,8 +88,65 @@ class Agent:
         reply.history = main.messages
         reply.usage += main.usage
         reply.models |= main.models
+        proposed = {call.pending_action for call in registry.calls if call.pending_action}
+        reply.pending = [a for a in self.pending_actions() if a.id in proposed]
         self._log(text, reply)
         return reply
+
+    # --- Confirmation (called by the interface, never by the model) ---
+
+    def pending_actions(self) -> list[PendingAction]:
+        with self.conn:
+            self.conn.execute(
+                "UPDATE core_pending_actions SET status = 'expired', resolved_at = CURRENT_TIMESTAMP "
+                "WHERE status = 'pending' AND created_at < datetime('now', ?)",
+                (PENDING_EXPIRY,),
+            )
+        rows = self.conn.execute(
+            "SELECT id, summary, module, tool, created_at FROM core_pending_actions "
+            "WHERE status = 'pending' ORDER BY id"
+        )
+        return [PendingAction(**dict(row)) for row in rows]
+
+    def confirm(self, action_id: int) -> str:
+        """Run a pending action exactly as it was proposed. Returns a message for the user."""
+        action = self._pending(action_id)
+        row = self.conn.execute(
+            "SELECT arguments FROM core_pending_actions WHERE id = ?", (action_id,)
+        ).fetchone()
+        registry = Registry(self.modules, self.conn, self.services)
+        try:
+            with self.conn:
+                result = registry.call(action.module, action.tool, json.loads(row["arguments"]),
+                                       confirmed=True)
+        except RECOVERABLE as exc:
+            self._resolve(action_id, "failed", str(exc))
+            message = f"Could not complete #{action_id}: {exc}"
+        else:
+            self._resolve(action_id, "done", _to_json(result))
+            message = f"Done #{action_id}: {action.summary}"
+        self._log(f"[confirm #{action_id}]", Reply(message, [], registry.calls))
+        return message
+
+    def reject(self, action_id: int) -> str:
+        action = self._pending(action_id)
+        self._resolve(action_id, "rejected", None)
+        self._log(f"[reject #{action_id}]", Reply("rejected", [], []))
+        return f"Discarded #{action_id}: {action.summary}"
+
+    def _pending(self, action_id: int) -> PendingAction:
+        for action in self.pending_actions():
+            if action.id == action_id:
+                return action
+        raise NotFound(f"no pending action #{action_id} (it may be done, rejected or expired)")
+
+    def _resolve(self, action_id: int, status: str, result: str | None) -> None:
+        with self.conn:
+            self.conn.execute(
+                "UPDATE core_pending_actions SET status = ?, result = ?, resolved_at = CURRENT_TIMESTAMP "
+                "WHERE id = ?",
+                (status, result, action_id),
+            )
 
     def _run_module(self, module: Module, task: str, registry: Registry) -> RunResult:
         def execute(tool_name: str, arguments: dict) -> tuple[str, bool]:
@@ -150,6 +225,8 @@ def _to_json(value) -> str:
     def default(obj):
         if dataclasses.is_dataclass(obj):
             return dataclasses.asdict(obj)
+        if isinstance(obj, BaseModel):
+            return obj.model_dump(mode="json")
         if isinstance(obj, date):
             return obj.isoformat()
         raise TypeError(f"cannot serialize {type(obj).__name__}")

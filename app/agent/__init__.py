@@ -20,12 +20,15 @@ def open_agent_db() -> sqlite3.Connection:
 
 
 def build_agent(conn: sqlite3.Connection, runner: AgentRunner | None = None) -> Agent:
+    from modules.calendar import client as calendar
+
     config = load_config()
     return Agent(
         runner=runner or get_runner(),
         modules=load_modules(config=config),
         conn=conn,
         model=orchestrator_model(config),
+        services={"calendar": calendar.from_env()},
     )
 
 

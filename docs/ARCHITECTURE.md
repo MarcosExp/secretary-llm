@@ -50,8 +50,8 @@ flowchart LR
 
 | Component | Technology | Role |
 |---|---|---|
-| Interface | FastAPI + PWA | Text chat and a record button; installable on the phone. |
-| Voice | faster-whisper (`small`, CPU) | Local transcription. Audio is deleted after transcribing. |
+| Interface | FastAPI + PWA (plain HTML/JS, no build step) | Text chat, record button and Confirm/Discard cards; installable on the phone. Conversations are stored in `core_conversations` and trimmed to the last 10 turns. No login (tailnet only); writes require an `X-Secretary` header against CSRF. |
+| Voice | faster-whisper (`small`, CPU, int8) | Local transcription. The upload is deleted as soon as it is transcribed. |
 | Agent core | Python | Agent loop, tool registry, confirmations and logging. |
 | LLM layer | `LLMProvider` interface | `FakeProvider`, `ApiProvider` (API key) and `SubscriptionProvider` (Claude Agent SDK). |
 | Data | SQLite + Litestream | Continuous replication to an encrypted bucket. |
@@ -118,11 +118,20 @@ Example rules (fictional):
 | core | `add_task`, `update_task`, `complete_task`, `archive_task`, `add_area` | Small write |
 | studies | `list_courses`, `study_progress`, `list_course_tasks` | Read |
 | studies | `log_study_hours`, `set_unit_status`, `add_course`, `update_course`, `add_unit`, `add_course_task` | Small write |
-| *planned* | `calendar_read`, `calendar_create_event`, `calendar_move_event` | Write, confirmation when several events |
+| calendar | `calendar_list_events` | Read (Google Calendar) |
+| calendar | `calendar_create_events` | Write; confirmation when creating more than one |
+| calendar | `calendar_move_events` | Write; always confirmed. Refuses events with other attendees |
 | *planned* | `plan_week` | Solver proposal, confirmation before writing to the calendar |
 | *planned* | `wiki_read`, `wiki_search`, `wiki_write` | Read / write with git commit |
 
 Every tool's input schema is generated from its Python signature and validated with Pydantic before it runs. Invalid arguments and domain errors (unknown area, ambiguous course) go back to the model as `is_error` tool results, so it can correct itself. There is no delete tool.
+
+**Confirmations:** a tool declares `confirm` (always, or a rule on its arguments) and a `summarize` function. A call that needs confirmation does not run:
+1. The registry stores it in `core_pending_actions`, with the summary written by code (not the model), and returns "awaiting confirmation".
+2. The interface shows the summary. The user's `confirm` makes the code run the stored call directly: the model cannot confirm anything. `reject` discards it.
+3. Proposals expire after 24 hours.
+
+External services such as the calendar reach tools through `ctx.service("calendar")`. They are injected by the app, so tests use an in-memory `FakeCalendar`.
 
 ## 6. Module system
 
@@ -245,7 +254,7 @@ Tests use `ScriptedProvider` with our loop, and a fake `query` for the SDK runne
 │   ├── sdk/          # @tool, ModuleContext, module loader
 │   ├── planner/      # CP-SAT model
 │   ├── db/           # connection, migrations, access control
-│   ├── voice/        # faster-whisper
+│   ├── voice.py      # faster-whisper
 │   └── scheduler/
 ├── modules/
 │   ├── core/

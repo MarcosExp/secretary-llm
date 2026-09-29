@@ -6,8 +6,11 @@ requires-python = ">=3.11"
 dependencies = [
     "anthropic>=1.9",
     "fastapi>=0.115",
+    "google-auth>=2.30",
     "pydantic>=2.7",
+    "python-multipart>=0.0.9",
     "pyyaml>=6",
+    "requests>=2.31",
     "tzdata",
     "uvicorn>=0.30",
 ]
@@ -15,6 +18,10 @@ dependencies = [
 [project.optional-dependencies]
 subscription = [
     "claude-agent-sdk>=0.2.161",   # bundles the Claude Code CLI (~250 MB)
+]
+voice = [
+    "faster-whisper>=1.1",         # local speech-to-text; models download on first use
+    "av<19",                       # faster-whisper 1.2 passes an argument PyAV 19 removed
 ]
 dev = [
     "pytest>=8",
@@ -32,5 +39,5 @@ build-backend = "setuptools.build_meta"
 include = ["app*", "modules*"]
 
 [tool.setuptools.package-data]
-app = ["agent/prompts/*.md"]
+app = ["agent/prompts/*.md", "api/static/*", "api/static/icons/*"]
 modules = ["*/migrations/*.sql", "*/seed_example.sql", "*/module.yaml", "*/prompt.md"]

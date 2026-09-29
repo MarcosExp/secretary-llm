@@ -5,6 +5,7 @@
     secretary task done 4
     secretary ask "add submit the lab report on Friday"
     secretary chat
+    secretary pending | confirm 3 | reject 3
 """
 
 import argparse
@@ -134,11 +135,31 @@ def build_parser() -> argparse.ArgumentParser:
     chat = groups.add_parser("chat", help="talk to the agent (empty line or Ctrl+D to exit)")
     chat.add_argument("-v", "--verbose", action="store_true", help="show the tool calls made")
 
+    groups.add_parser("pending", help="list changes waiting for your confirmation")
+    for name, help_text in (("confirm", "run a pending change"), ("reject", "discard a pending change")):
+        cmd = groups.add_parser(name, help=help_text)
+        cmd.add_argument("id", type=int)
+
     return parser
 
 
-def format_reply(reply, verbose: bool) -> str:
+AGENT_COMMANDS = ("ask", "chat", "pending", "confirm", "reject")
+
+
+def format_pending(actions, with_commands: bool = True) -> str:
+    lines = []
+    for action in actions:
+        lines.append(f"Needs your confirmation (#{action.id}):")
+        lines += [f"  {line}" for line in action.summary.splitlines()]
+        if with_commands:
+            lines.append(f"  -> secretary confirm {action.id}   |   secretary reject {action.id}")
+    return "\n".join(lines)
+
+
+def format_reply(reply, verbose: bool, commands: bool = True) -> str:
     lines = [reply.text]
+    if reply.pending:
+        lines.append(format_pending(reply.pending, commands))
     if verbose:
         for call in reply.tool_calls:
             status = "" if call.ok else "  [failed]"
@@ -158,9 +179,19 @@ def run_agent(args: argparse.Namespace) -> int:
     conn = open_agent_db()
     try:
         agent = build_agent(conn)
-        if args.group == "ask":
-            print(format_reply(agent.ask(args.text), args.verbose))
-            return 0
+        match args.group:
+            case "ask":
+                print(format_reply(agent.ask(args.text), args.verbose))
+                return 0
+            case "pending":
+                print(format_pending(agent.pending_actions()) or "Nothing pending.")
+                return 0
+            case "confirm":
+                print(agent.confirm(args.id))
+                return 0
+            case "reject":
+                print(agent.reject(args.id))
+                return 0
         history: list[dict] = []
         while True:
             try:
@@ -171,8 +202,18 @@ def run_agent(args: argparse.Namespace) -> int:
                 break
             reply = agent.ask(text, history)
             history = reply.history
-            print(format_reply(reply, args.verbose))
+            print(format_reply(reply, args.verbose, commands=False))
+            for action in reply.pending:
+                answer = input(f"Confirm #{action.id}? [y/N] ").strip().lower()
+                confirmed = answer in ("y", "yes", "s", "si", "sí")
+                outcome = agent.confirm(action.id) if confirmed else agent.reject(action.id)
+                print(outcome)
+                # Tell the model what happened, so the next turn does not repeat the proposal.
+                history.append({"role": "user", "content": f"<app_note>{outcome}</app_note>"})
         return 0
+    except NotFound as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     except LLMError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -236,7 +277,7 @@ def run(args: argparse.Namespace, conn: sqlite3.Connection) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.group in ("ask", "chat"):
+    if args.group in AGENT_COMMANDS:
         return run_agent(args)
     conn = connect()
     try:

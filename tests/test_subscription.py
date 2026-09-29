@@ -87,6 +87,7 @@ def test_run_locks_the_sdk_down_and_maps_the_result(monkeypatch):
     assert options.tools == [] and options.setting_sources == []
     assert options.allowed_tools == ["mcp__secretary__add_task"]
     assert options.permission_mode == "dontAsk"
+    assert options.env["ANTHROPIC_API_KEY"] == ""  # never bill API credits in subscription mode
     assert options.model == "claude-haiku-4-5" and options.effort is None  # Haiku takes no effort
     assert (run.text, run.stop_reason, run.usage.output_tokens) == ("Added task 7.", "end_turn", 9)
     assert run.messages[-1] == {"role": "assistant", "content": [{"type": "text", "text": "Added task 7."}]}

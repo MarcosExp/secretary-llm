@@ -1,0 +1,8 @@
+name: calendar
+description: >
+  The user's Google Calendar. Lists events for a day or a range, creates events
+  and moves them to new times. Use it for anything about what is scheduled, free
+  time, appointments and blocks on the calendar.
+version: 1
+model: haiku
+reads: []

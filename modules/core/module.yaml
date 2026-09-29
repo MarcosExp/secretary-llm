@@ -4,7 +4,7 @@ description: >
   priority (P1 today, P2 this week, P3 someday), area, due date, time estimate
   and notes. Use it for to-dos, deadlines and what is pending, except coursework
   for a specific course (assignments, exercises, lab reports): send that to studies
-  so the task is linked to its course.
+  so the task is linked to its course. Calendar events belong to the calendar module.
 version: 1
 model: haiku
 reads: []

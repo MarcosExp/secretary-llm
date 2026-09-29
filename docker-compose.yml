@@ -22,12 +22,18 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       SECRETARY_ORCHESTRATOR_MODEL: ${SECRETARY_ORCHESTRATOR_MODEL:-}   # empty: config.yaml, else haiku
       SECRETARY_CONFIG: /config/config.yaml
+      GOOGLE_CALENDAR_ID: ${GOOGLE_CALENDAR_ID:-}
+      GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_CALENDAR_ID:+/secrets/google-service-account.json}
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}
+      WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-}
       APP_HOST: 0.0.0.0   # inside the container; the host side is bound to 127.0.0.1 below
     ports:
       - "127.0.0.1:${APP_PORT:-8000}:8000"
     volumes:
       - ${SECRETARY_DATA_DIR:?set SECRETARY_DATA_DIR in .env}/db:/data
       - ${SECRETARY_DATA_DIR:?set SECRETARY_DATA_DIR in .env}/config:/config:ro
+      - ${SECRETARY_DATA_DIR:?set SECRETARY_DATA_DIR in .env}/secrets:/secrets:ro
+      - ${SECRETARY_DATA_DIR:?set SECRETARY_DATA_DIR in .env}/models:/models
 
   # Bucket settings are not required to start the stack, so the app can run before
   # backups are configured. Without them this container exits with an error and keeps

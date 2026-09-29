@@ -53,6 +53,9 @@ class SubscriptionRunner:
                 max_turns=max_turns,
                 cwd=workdir,
                 effort=effort if effort and model_id not in NO_EFFORT_MODELS else None,
+                # Claude Code prefers ANTHROPIC_API_KEY over CLAUDE_CODE_OAUTH_TOKEN; blank it
+                # so this runner always bills the subscription, never API credits.
+                env={"ANTHROPIC_API_KEY": ""},
             )
             try:
                 async for message in query(prompt=build_prompt(messages), options=options):

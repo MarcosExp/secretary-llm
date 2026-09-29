@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 from app import clock
 from app.sdk.access import ScopedDB
+from app.sdk.errors import ToolError
 
 if TYPE_CHECKING:
     from app.sdk.registry import Registry
@@ -28,3 +29,10 @@ class ModuleContext:
 
     def today(self) -> date:
         return clock.today()
+
+    def service(self, name: str) -> Any:
+        """A shared client provided by the app (e.g. "calendar"), or ToolError if not configured."""
+        service = self._registry.services.get(name)
+        if service is None:
+            raise ToolError(f"{name} is not configured on this server (see docs/OPERATIONS.md)")
+        return service
