@@ -62,6 +62,20 @@ docker compose -f docker-compose.yml -f compose.tailscale.yml up -d --build
 
 The app is at `https://secretary.<tailnet>.ts.net`.
 
+## Command-line interface
+
+Run the CLI inside the `app` container so it uses the same database file as the running app:
+
+```sh
+docker compose exec app secretary task add "Submit assignment" -p P1 -a Studies -d 2027-01-15 -e 3
+docker compose exec app secretary task list
+docker compose exec app secretary --help
+```
+
+Avoid opening the live database from the host while the stack runs. On Docker Desktop (Windows/macOS), SQLite locks are not reliable across the bind mount.
+
+To try the project with fictional data, point `SECRETARY_DATA_DIR` at an empty directory and run `secretary db seed-example`. It refuses to run on a database that already has tasks.
+
 ## Backups
 
 - **What:** the SQLite database, replicated continuously, with 30 days of point-in-time history and a daily snapshot.

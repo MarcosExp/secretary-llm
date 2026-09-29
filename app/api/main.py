@@ -3,12 +3,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.db import connect
+from app.db.migrations import migrate
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # Creates the database file in WAL mode so Litestream can start replicating.
-    connect().close()
+    # Creates the database in WAL mode (needed by Litestream) and applies pending migrations.
+    conn = connect()
+    try:
+        migrate(conn)
+    finally:
+        conn.close()
     yield
 
 

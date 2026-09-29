@@ -61,67 +61,29 @@ flowchart LR
 | Network | Tailscale | Private access without opening ports. |
 | Deployment | Docker Compose | One container per service, isolated from the rest of the server. |
 
-## 3. Data model (core)
+## 3. Data model
 
-```sql
-CREATE TABLE areas (
-  id INTEGER PRIMARY KEY,
-  name TEXT UNIQUE NOT NULL          -- e.g. Work, Studies, Projects, Health
-);
+The migrations are the source of truth: [`modules/core/migrations`](../modules/core/migrations) and [`modules/studies/migrations`](../modules/studies/migrations). Summary:
 
-CREATE TABLE tasks (
-  id INTEGER PRIMARY KEY,
-  title TEXT NOT NULL,
-  status TEXT DEFAULT 'todo',        -- todo, doing, done, archived
-  priority TEXT DEFAULT 'P2',        -- P1 today, P2 this week, P3 someday
-  area_id INTEGER REFERENCES areas(id),
-  due DATE,
-  estimate_h REAL,
-  notes TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+| Table | Owner | Content |
+|---|---|---|
+| `core_areas` | core | Life areas (Work, Studies, …) |
+| `core_tasks` | core | Title, status (`todo`, `doing`, `done`, `archived`), priority (`P1` today, `P2` this week, `P3` someday), area, due date, estimate, notes, timestamps |
+| `core_schedule_blocks` | core | Fixed weekly blocks used by the planner, with their Google Calendar event ID |
+| `core_agent_log` | core | Every agent call: input, tools called, output, model and tokens |
+| `studies_programs`, `studies_courses`, `studies_units` | studies | Programs, courses with exam dates, study units with estimated and done hours and confidence (1-5) |
+| `studies_course_tasks` | studies | Links courses to core tasks. The dependent module owns cross-module references. |
+| `schema_migrations` | runner | Applied migrations with checksums |
 
-CREATE TABLE schedule_blocks (       -- fixed blocks used by the solver
-  id INTEGER PRIMARY KEY,
-  name TEXT, kind TEXT,
-  weekday INTEGER, start_time TEXT, end_time TEXT,
-  valid_from DATE, valid_to DATE,
-  gcal_event_id TEXT,
-  status TEXT DEFAULT 'active'
-);
+Rules enforced by the database itself:
 
-CREATE TABLE agent_log (             -- traceability and cost
-  id INTEGER PRIMARY KEY,
-  ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  input TEXT, tools_called TEXT, output TEXT,
-  model TEXT, input_tokens INTEGER, output_tokens INTEGER
-);
-```
+- **Every table is prefixed with its module**, so ownership is visible in the name and access control (§6) is a prefix check.
+- **Nothing is ever deleted.** A `BEFORE DELETE` trigger on every table aborts the statement; rows are archived instead.
+- **`CHECK` constraints** on statuses, priorities, ISO dates, `HH:MM` times, positive estimates and confidence 1-5. The Python layer validates first for clear error messages, and the constraints are the backstop.
 
-Each module adds its own prefixed tables through migrations:
+**Migrations:** each module owns `migrations/NNN_description.sql`, applied in order with core first. Every file runs in one transaction and is recorded with a checksum, so editing an applied migration is an error and schema changes always go in a new file. They run on app startup and on every CLI command.
 
-```sql
--- modules/studies/migrations/001_init.sql
-CREATE TABLE studies_programs (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL);
-CREATE TABLE studies_courses (
-  id INTEGER PRIMARY KEY,
-  name TEXT NOT NULL,
-  program_id INTEGER REFERENCES studies_programs(id),
-  status TEXT DEFAULT 'enrolled',    -- enrolled, passed, archived
-  exam_date DATE
-);
-CREATE TABLE studies_units (
-  id INTEGER PRIMARY KEY,
-  course_id INTEGER REFERENCES studies_courses(id),
-  unit TEXT NOT NULL,
-  start DATE, "end" DATE,
-  estimate_h REAL,
-  done_h REAL DEFAULT 0,
-  confidence INTEGER,                -- 1-5
-  status TEXT DEFAULT 'pending'
-);
-```
+**Example data:** each module can ship a `seed_example.sql` with fictional rows (dates relative to today). `secretary db seed-example` loads them, only into an empty database.
 
 Later modules: `training_workouts (date, kind, details)` and `jobs_applications (company, role, url, status, applied_at, next_step, notes)`.
 
@@ -197,7 +159,7 @@ description: >
   tracks applications.
 version: 1
 model: haiku
-reads: [core.tasks, core.calendar]
+reads: [core_tasks, core_schedule_blocks]
 schedule:
   - cron: "0 9 * * 6"
     job: weekly_sweep
@@ -226,7 +188,7 @@ class LLMProvider(Protocol):
 PROVIDER = os.getenv("LLM_PROVIDER", "fake")   # fake | api | subscription
 ```
 
-- Tokens per call are logged in `agent_log` from day one.
+- Tokens per call are logged in `core_agent_log` from day one.
 - Fixed reminders and summaries come from templates and SQL, with no LLM call.
 - With the API: Haiku for routine commands, Sonnet/Opus for planning, prompt caching for `index.md` + `rules.md`, and a monthly spend limit.
 
@@ -236,7 +198,7 @@ PROVIDER = os.getenv("LLM_PROVIDER", "fake")   # fake | api | subscription
 2. The LLM turns what the user says ("I have an appointment on Thursday, I'm tired") into constraints: `block(thursday, 17:00-20:00)`, `max_load = 80%`.
 3. CP-SAT places the blocks. Hard constraints: unavailable hours, fixed activities, minimum leisure, minimum daily task. Soft: spread study time and prioritize earlier deadlines.
 4. If there is no solution, it reports which constraint fails and how many hours are missing.
-5. After confirmation, it writes to Google Calendar and stores the IDs in `schedule_blocks`.
+5. After confirmation, it writes to Google Calendar and stores the IDs in `core_schedule_blocks`.
 
 ## 9. Security and privacy
 
@@ -294,6 +256,6 @@ PROVIDER = os.getenv("LLM_PROVIDER", "fake")   # fake | api | subscription
 - **Tools:** ~50 natural-language commands with the expected call. Metric: % correct tool and arguments.
 - **Planner:** 20 synthetic weeks. Metrics: hard constraints met (100%), leisure preserved, hours placed vs. requested.
 - **Memory:** questions about past decisions in the example wiki. Metric: correct answer with source.
-- **Cost:** average tokens per command and per week, from `agent_log`.
+- **Cost:** average tokens per command and per week, from `core_agent_log`.
 
 Evals run in CI with a fake provider (deterministic) and with the real one on a sample. All cases are synthetic.
