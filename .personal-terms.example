@@ -1,0 +1,10 @@
+# Copy this file to .personal-terms (ignored by git) and fill it in.
+# One word or phrase per line, case-insensitive.
+# The pre-commit hook blocks any commit that contains one of them.
+#
+# What to list:
+#   your full name
+#   your personal emails and usernames
+#   employer, university, course names
+#   private project names, places, people close to you
+#   schedules or activities that could identify you

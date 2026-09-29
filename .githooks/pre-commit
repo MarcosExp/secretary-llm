@@ -1,0 +1,51 @@
+#!/bin/sh
+# Blocks commits containing secrets (gitleaks) or personal terms (.personal-terms).
+# Enable with: git config core.hooksPath .githooks
+
+fail=0
+terms=".personal-terms"
+
+# Prints the stdin lines that contain any term listed in $1 (case-insensitive).
+# awk instead of grep -iF -f: grep 3.0 shipped with Git for Windows aborts on that combination.
+match_terms() {
+  awk 'NR == FNR { p[tolower($0)]; next }
+       { l = tolower($0); for (t in p) if (index(l, t)) { print; next } }' "$1" -
+}
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks is not installed (winget install gitleaks)." >&2
+  exit 1
+fi
+gitleaks git --pre-commit --staged --redact --no-banner || fail=1
+
+if git diff --cached --name-only | grep -qx "$terms"; then
+  echo "pre-commit: $terms must never be committed." >&2
+  fail=1
+fi
+
+if [ -f "$terms" ]; then
+  patterns=$(mktemp)
+  tr -d '\r' < "$terms" | grep -v '^[[:space:]]*#' | sed 's/[[:space:]]*$//' | grep -v '^$' > "$patterns"
+  if [ -s "$patterns" ]; then
+    git diff --cached --name-only --diff-filter=ACMR > "$patterns.files"
+    while IFS= read -r f; do
+      # File names count too
+      if [ -n "$(printf '%s\n' "$f" | match_terms "$patterns")" ]; then
+        echo "pre-commit: personal term in file name: $f" >&2
+        fail=1
+      fi
+      hits=$(git diff --cached -U0 --no-color -- "$f" | grep '^+' | grep -v '^+++' | match_terms "$patterns")
+      if [ -n "$hits" ]; then
+        echo "pre-commit: personal term in $f:" >&2
+        printf '%s\n' "$hits" >&2
+        fail=1
+      fi
+    done < "$patterns.files"
+    rm -f "$patterns.files"
+  fi
+  rm -f "$patterns"
+else
+  echo "pre-commit: warning, $terms not found (copy .personal-terms.example)." >&2
+fi
+
+exit $fail
