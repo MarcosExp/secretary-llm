@@ -3,8 +3,12 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+# git versions the user's wiki (every change the agent makes is a commit).
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN useradd --uid 1000 --create-home app \
-    && mkdir /data /models && chown app:app /data /models   # new named volumes inherit this owner
+    && mkdir /data /models /wiki && chown app:app /data /models /wiki   # new named volumes inherit this owner
 
 WORKDIR /srv
 COPY pyproject.toml ./

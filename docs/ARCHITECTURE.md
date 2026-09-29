@@ -89,7 +89,7 @@ The `jobs` module owns `jobs_applications` (company, role, stage, priority, dead
 
 ## 4. Memory: the wiki
 
-The agent maintains and updates these files instead of rebuilding context on every query. The real wiki lives outside the repo; `examples/wiki/` contains one for a fictional user.
+The agent maintains and updates these files instead of rebuilding context on every query. The real wiki lives outside the repo, in the data directory, as its own local git repository: every change the agent makes is a commit. `secretary wiki init` creates it from the starter pages in `modules/wiki/template/`.
 
 ```
 wiki/
@@ -108,7 +108,15 @@ Example rules (fictional):
 - Nothing is planned during trips and holidays.
 - If the request does not fit the available hours, say so with numbers and propose what to drop.
 
-**Retrieval:** `index.md` + full-text search (ripgrep). Embeddings (sqlite-vec) only once the wiki exceeds roughly 50-100 pages.
+**Always in context:**
+- The orchestrator's system prompt includes `index.md`, `profile.md` and `rules.md`.
+- Every module subagent gets `rules.md`, so the module that acts can flag a conflict.
+- Untouched template pages are left out.
+- These pages change rarely, so the prompt stays cacheable.
+
+**Protected pages:** `rules.md` and `profile.md` shape every answer, so the wiki tools only change them after the user confirms (the same pending-action flow as the calendar). A prompt injection in an event or a web page cannot rewrite the user's rules.
+
+**Retrieval:** `index.md` + word search over the pages. Embeddings (sqlite-vec) only once the wiki exceeds roughly 50-100 pages.
 
 ## 5. Agent tools
 
@@ -124,7 +132,8 @@ Example rules (fictional):
 | jobs | `list_applications`, `get_application` | Read |
 | jobs | `add_application`, `update_application`, `add_application_task` | Small write |
 | *planned* | `plan_week` | Solver proposal, confirmation before writing to the calendar |
-| *planned* | `wiki_read`, `wiki_search`, `wiki_write` | Read / write with git commit |
+| wiki | `wiki_list`, `wiki_read`, `wiki_search` | Read |
+| wiki | `wiki_write`, `wiki_append` | Write with git commit; confirmation for `rules.md` and `profile.md` |
 
 Every tool's input schema is generated from its Python signature and validated with Pydantic before it runs. Invalid arguments and domain errors (unknown area, ambiguous course) go back to the model as `is_error` tool results, so it can correct itself. There is no delete tool.
 

@@ -7,6 +7,7 @@
     secretary chat
     secretary pending | confirm 3 | reject 3
     secretary import notion [--dry-run]
+    secretary wiki init
 """
 
 import argparse
@@ -94,6 +95,9 @@ def build_parser() -> argparse.ArgumentParser:
         dest="command", required=True)
     notion = importer.add_parser("notion", help="import from Notion (mapping in config/notion.yaml)")
     notion.add_argument("--dry-run", action="store_true", help="show what would be imported, change nothing")
+
+    wiki = groups.add_parser("wiki", help="the user's Markdown wiki").add_subparsers(dest="command", required=True)
+    wiki.add_parser("init", help="create the wiki (git repository and starter pages); never overwrites")
 
     area = groups.add_parser("area", help="manage areas").add_subparsers(dest="command", required=True)
     area.add_parser("list", help="list active areas")
@@ -242,6 +246,19 @@ def import_notion(conn: sqlite3.Connection, dry_run: bool) -> str:
     return f"{header}\n{report.summary()}"
 
 
+def init_wiki() -> str:
+    import os
+    from pathlib import Path
+
+    from modules.wiki.store import WikiStore
+
+    root = os.getenv("WIKI_DIR")
+    if not root:
+        raise ValueError("set WIKI_DIR to the wiki folder")
+    created = WikiStore(Path(root)).init()
+    return f"Wiki ready at {root}. " + (f"Created: {', '.join(created)}." if created else "Nothing to create.")
+
+
 def run(args: argparse.Namespace, conn: sqlite3.Connection) -> str:
     match args.group, args.command:
         case "db", "migrate":
@@ -251,6 +268,8 @@ def run(args: argparse.Namespace, conn: sqlite3.Connection) -> str:
             return f"Example data loaded for: {', '.join(modules)}."
         case "import", "notion":
             return import_notion(conn, args.dry_run)
+        case "wiki", "init":
+            return init_wiki()
         case "area", "list":
             return "\n".join(repo.list_areas(conn)) or "No areas."
         case "area", "add":

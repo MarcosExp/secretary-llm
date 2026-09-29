@@ -156,6 +156,27 @@ Needs your confirmation (#4):
 
 The agent never deletes calendar events, never moves events that have other attendees, and never sends invitations. Events it creates carry a private marker, so later features can tell them apart from yours.
 
+## Wiki (long-term memory)
+
+The wiki is a folder of Markdown pages in `secretary-data/wiki/`, kept in its own local git repository. Create it once:
+
+```sh
+docker compose run --rm --no-deps app secretary wiki init
+```
+
+Then write your pages, by hand or by asking the agent:
+- `profile.md`: who you are, goals and priorities;
+- `rules.md`: how your time should be organized;
+- `decisions.md`: a dated log of decisions.
+
+How the agent uses them:
+- The orchestrator reads `index.md`, `profile.md` and `rules.md` on every request.
+- Every module subagent also gets `rules.md`, so the module that acts can flag conflicts.
+- Every change the agent makes is a git commit (author `secretary`), so `git log` / `git revert` in that folder undo anything.
+- The agent cannot change `rules.md` or `profile.md` without your confirmation, so a text it reads elsewhere cannot rewrite your rules.
+
+To back the wiki up, add a private git remote to that folder and push, or include it in your server backups. It is not replicated by Litestream.
+
 ## Importing from Notion
 
 `secretary import notion` copies courses, study units, job applications and tasks from Notion databases, including the links between them (task → course, task → application).

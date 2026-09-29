@@ -11,6 +11,7 @@ without the model.
 
 import dataclasses
 import json
+import re
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -31,6 +32,8 @@ MODULE_BASE_PROMPT = (PROMPTS / "module_base.md").read_text(encoding="utf-8").st
 # Errors a tool reports back to the model so it can correct itself. Anything else is a bug.
 RECOVERABLE = (NotFound, ValueError, ToolError, AccessDenied, sqlite3.IntegrityError)
 PENDING_EXPIRY = "-24 hours"  # SQLite datetime modifier: older proposals can no longer be confirmed
+MEMORY_PAGES = ("index.md", "profile.md", "rules.md")  # read on every request
+MEMORY_PAGE_CHARS = 6000
 
 
 @dataclass
@@ -79,7 +82,7 @@ class Agent:
         messages.append({"role": "user", "content": f"{_date_context()}\n\n{text}"})
         main = self.runner.run(
             model=self.model,
-            system=ORCHESTRATOR_PROMPT,
+            system=self._system_prompt(),
             messages=messages,
             tools=[self._delegate_schema(m) for m in self.modules.values()],
             execute=delegate,
@@ -160,12 +163,53 @@ class Agent:
 
         return self.runner.run(
             model=module.model,
-            system=f"{MODULE_BASE_PROMPT}\n\n{module.prompt}",
+            system=self._module_system_prompt(module),
             messages=[{"role": "user", "content": f"{_date_context()}\n\nTask: {task}"}],
             tools=[tool.schema() for tool in module.tools.values()],
             execute=execute,
             effort=module.effort,
         )
+
+    def _system_prompt(self) -> str:
+        """The orchestrator prompt plus the user's always-on memory pages from the wiki.
+
+        These pages change rarely, so the whole system prompt stays cacheable.
+        """
+        memory = self._memory(MEMORY_PAGES)
+        if not memory:
+            return ORCHESTRATOR_PROMPT
+        return (
+            f"{ORCHESTRATOR_PROMPT}\n\n"
+            "The user's own notes from their wiki follow. Before answering anything about "
+            "plans, times or priorities, check it against every rule in rules.md and point out "
+            "any rule it breaks, even if the calendar is free.\n"
+            f"<user_memory>\n{memory}\n</user_memory>"
+        )
+
+    def _module_system_prompt(self, module: Module) -> str:
+        """Module subagents get the user's rules too: they are the ones that act."""
+        base = f"{MODULE_BASE_PROMPT}\n\n{module.prompt}"
+        rules = self._memory(("rules.md",))
+        if not rules:
+            return base
+        return (
+            f"{base}\n\nThe user's rules (from their wiki). If the task conflicts with one, "
+            f"say which in your report instead of ignoring it.\n<user_memory>\n{rules}\n</user_memory>"
+        )
+
+    def _memory(self, pages: tuple[str, ...]) -> str:
+        wiki = self.services.get("wiki")
+        if wiki is None:
+            return ""
+        sections = []
+        for page in pages:
+            # Template guidance lives in HTML comments; the model doesn't need it.
+            text = re.sub(r"<!--.*?-->", "", wiki.read_optional(page) or "", flags=re.S).strip()
+            if _has_content(text):
+                if len(text) > MEMORY_PAGE_CHARS:
+                    text = text[:MEMORY_PAGE_CHARS] + "\n[… truncated; read the full page through the wiki module]"
+                sections.append(f'<page path="{page}">\n{text}\n</page>')
+        return "\n".join(sections)
 
     @staticmethod
     def _delegate_schema(module: Module) -> dict:
@@ -204,6 +248,14 @@ class Agent:
                     reply.usage.output_tokens,
                 ),
             )
+
+
+def _has_content(page: str) -> bool:
+    """False for an untouched template: only headings and empty list items."""
+    return any(
+        line.strip() and not line.lstrip().startswith("#") and line.strip() not in ("-", "*", "1.")
+        for line in page.splitlines()
+    )
 
 
 CALENDAR_DAYS = 14

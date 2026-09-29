@@ -1,0 +1,9 @@
+name: wiki
+description: >
+  The user's long-term memory: a Markdown wiki with their profile, organization
+  rules, dated decisions, notes per course or project and weekly journal. Use it to
+  look up why something was decided or what the user noted about a topic, and to
+  record new decisions, notes or rule changes.
+version: 1
+model: haiku
+reads: []

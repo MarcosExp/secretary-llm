@@ -48,7 +48,7 @@ def test_delegation_end_to_end(conn):
     # The orchestrator only sees delegate tools; the subagent sees the module's own tools.
     orchestrator_req, sub_req = provider.requests[0], provider.requests[1]
     assert {t["name"] for t in orchestrator_req["tools"]} == {
-        "delegate_to_calendar", "delegate_to_core", "delegate_to_jobs", "delegate_to_studies"}
+        f"delegate_to_{name}" for name in load_modules()}
     assert "add_task" in {t["name"] for t in sub_req["tools"]}
     assert "You manage the user's tasks" in sub_req["system"]
     assert "<context>Today is" in orchestrator_req["messages"][0]["content"]

@@ -40,4 +40,5 @@ include = ["app*", "modules*"]
 
 [tool.setuptools.package-data]
 app = ["agent/prompts/*.md", "api/static/*", "api/static/icons/*"]
-modules = ["*/migrations/*.sql", "*/seed_example.sql", "*/module.yaml", "*/prompt.md"]
+modules = ["*/migrations/*.sql", "*/seed_example.sql", "*/module.yaml", "*/prompt.md",
+           "*/template/*.md", "*/template/*/*.md"]

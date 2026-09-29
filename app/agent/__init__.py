@@ -21,6 +21,7 @@ def open_agent_db() -> sqlite3.Connection:
 
 def build_agent(conn: sqlite3.Connection, runner: AgentRunner | None = None) -> Agent:
     from modules.calendar import client as calendar
+    from modules.wiki.store import WikiStore
 
     config = load_config()
     return Agent(
@@ -28,7 +29,7 @@ def build_agent(conn: sqlite3.Connection, runner: AgentRunner | None = None) -> 
         modules=load_modules(config=config),
         conn=conn,
         model=orchestrator_model(config),
-        services={"calendar": calendar.from_env()},
+        services={"calendar": calendar.from_env(), "wiki": WikiStore.from_env()},
     )
 
 
