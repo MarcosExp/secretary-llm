@@ -251,9 +251,13 @@ PROVIDER = os.getenv("LLM_PROVIDER", "fake")   # fake | api | subscription
 ## 10. Repository layout
 
 ```
-├── docker-compose.yml
+├── docker-compose.yml   # app + litestream, app on host loopback
+├── compose.tailscale.yml # optional Tailscale sidecar
 ├── .env.example
+├── deploy/              # litestream.yml, Tailscale Serve config
+├── scripts/             # restore test
 ├── app/
+│   ├── ops/          # backup restore check
 │   ├── api/          # FastAPI + PWA
 │   ├── agent/        # orchestrator, confirmations
 │   ├── llm/          # LLMProvider and implementations
@@ -268,7 +272,8 @@ PROVIDER = os.getenv("LLM_PROVIDER", "fake")   # fake | api | subscription
 ├── examples/         # fictional wiki, config and seed
 ├── migrate/          # Notion export (IDs from environment)
 ├── evals/            # synthetic cases and metrics
-└── docs/
+├── tests/
+└── docs/             # ARCHITECTURE.md, OPERATIONS.md
 ```
 
 ## 11. Phases

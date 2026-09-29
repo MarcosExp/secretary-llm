@@ -1,0 +1,15 @@
+# Continuous replication of the SQLite database to an S3-compatible bucket (Cloudflare R2, Backblaze B2, MinIO).
+# Values come from the environment; see .env.example.
+# Encryption at rest is provided by the bucket (R2 and B2 encrypt server-side).
+
+dbs:
+  - path: /data/secretary.db
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: secretary.db
+        endpoint: ${LITESTREAM_ENDPOINT}
+        region: ${LITESTREAM_REGION}
+        force-path-style: true
+        retention: 720h            # keep 30 days of point-in-time history
+        snapshot-interval: 24h

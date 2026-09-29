@@ -1,0 +1,37 @@
+# Base stack: the app is published on the host's loopback only.
+# Expose it to your tailnet with the host's Tailscale (tailscale serve), see docs/OPERATIONS.md,
+# or add the bundled sidecar: docker compose -f docker-compose.yml -f compose.tailscale.yml up -d
+
+x-hardening: &hardening
+  user: "1000:1000"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs: [/tmp]
+  restart: unless-stopped
+
+services:
+  app:
+    <<: *hardening
+    build: .
+    environment:
+      SECRETARY_DB_PATH: /data/secretary.db
+      APP_HOST: 0.0.0.0   # inside the container; the host side is bound to 127.0.0.1 below
+    ports:
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+    volumes:
+      - ${SECRETARY_DATA_DIR:?set SECRETARY_DATA_DIR in .env}/db:/data
+
+  litestream:
+    <<: *hardening
+    image: litestream/litestream:0.3.13
+    command: replicate
+    environment:
+      LITESTREAM_ACCESS_KEY_ID: ${LITESTREAM_ACCESS_KEY_ID:?set LITESTREAM_ACCESS_KEY_ID in .env}
+      LITESTREAM_SECRET_ACCESS_KEY: ${LITESTREAM_SECRET_ACCESS_KEY:?set LITESTREAM_SECRET_ACCESS_KEY in .env}
+      LITESTREAM_BUCKET: ${LITESTREAM_BUCKET:?set LITESTREAM_BUCKET in .env}
+      LITESTREAM_ENDPOINT: ${LITESTREAM_ENDPOINT:?set LITESTREAM_ENDPOINT in .env}
+      LITESTREAM_REGION: ${LITESTREAM_REGION:-auto}
+    volumes:
+      - ${SECRETARY_DATA_DIR:?set SECRETARY_DATA_DIR in .env}/db:/data
+      - ./deploy/litestream.yml:/etc/litestream.yml:ro

@@ -1,0 +1,24 @@
+# Optional Tailscale sidecar, for hosts without Tailscale installed.
+# The app joins the tailnet as its own node and is served over HTTPS; nothing is published on the host.
+# Usage: docker compose -f docker-compose.yml -f compose.tailscale.yml up -d
+
+services:
+  tailscale:
+    image: tailscale/tailscale:stable
+    hostname: ${TS_HOSTNAME:-secretary}
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:?set TS_AUTHKEY in .env}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_USERSPACE: "true"
+    volumes:
+      - ${SECRETARY_DATA_DIR:?set SECRETARY_DATA_DIR in .env}/tailscale:/var/lib/tailscale
+      - ./deploy/tailscale:/config:ro
+    restart: unless-stopped
+
+  app:
+    network_mode: service:tailscale
+    depends_on: [tailscale]
+    ports: !reset []
+    environment:
+      APP_HOST: 127.0.0.1   # shares the sidecar's network namespace; only Tailscale Serve reaches it

@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # scan the full history, not just the last commit
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ".[dev]"
+      - run: pytest -q
+
+  compose:
+    name: Compose config
+    runs-on: ubuntu-latest
+    env:
+      SECRETARY_DATA_DIR: /tmp/secretary-data
+      LITESTREAM_ACCESS_KEY_ID: dummy
+      LITESTREAM_SECRET_ACCESS_KEY: dummy
+      LITESTREAM_BUCKET: dummy
+      LITESTREAM_ENDPOINT: http://localhost:9000
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config --quiet
+      - run: docker compose -f docker-compose.yml -f compose.tailscale.yml config --quiet
+        env:
+          TS_AUTHKEY: dummy
