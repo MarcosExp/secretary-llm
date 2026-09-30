@@ -4,17 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Secretary · Data</title>
-  <meta name="theme-color" content="#1f2937">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#141a2b" media="(prefers-color-scheme: dark)">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="dashboard">
   <header>
-    <h1 id="title"></h1>
+    <div class="brand">
+      <img class="logo" src="/static/icons/icon.svg" alt="">
+      <h1 id="title"></h1>
+    </div>
     <nav>
-      <a id="csv-link" href="/api/logs.csv" download class="ghost"></a>
-      <a id="chat-link" href="/" class="ghost"></a>
+      <a id="csv-link" href="/api/logs.csv" download class="ghost nav-btn"></a>
+      <a id="chat-link" href="/" class="ghost nav-btn"></a>
     </nav>
   </header>
 
