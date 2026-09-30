@@ -12,9 +12,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # scan the full history, not just the last commit
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Run the CLI directly: gitleaks-action scans "<first pushed>^..<last>",
+      # which fails when the push includes the root commit.
+      - name: Install gitleaks
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz \
+            | sudo tar xz -C /usr/local/bin gitleaks
+      - run: gitleaks git --redact -v
 
   test:
     name: Tests
