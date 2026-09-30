@@ -161,6 +161,11 @@ main {
   gap: 10px;
 }
 
+/* Items keep their full height and the list scrolls. Without this, a flex item with
+   overflow: hidden (the confirmation card) shrinks once the chat fills the screen,
+   and its buttons are cut off. */
+main > * { flex-shrink: 0; }
+
 /* Empty chat: a faint logo instead of a blank page. */
 #messages:empty::before {
   content: "";
