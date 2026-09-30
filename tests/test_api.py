@@ -190,6 +190,7 @@ def test_token_log_downloads_as_csv(client, setup):
 
 def test_data_views_list_tables_and_rows(client, setup):
     conn = connect(setup.db_path)
+    conn.execute("CREATE TABLE _backup_probe (id INTEGER)")  # written by scripts/restore-test.sh
     conn.executemany("INSERT INTO core_tasks (title, status) VALUES (?, ?)",
                      [("a", "todo"), ("b", "todo"), ("c", "archived"), ("x" * 1000, "done")])
     conn.commit()
@@ -197,7 +198,7 @@ def test_data_views_list_tables_and_rows(client, setup):
     assert "<title>Secretary · Data</title>" in client.get("/dashboard").text
 
     tables = {t["name"]: t for t in client.get("/api/tables").json()}
-    assert "schema_migrations" not in tables
+    assert "schema_migrations" not in tables and "_backup_probe" not in tables
     assert tables["core_tasks"]["rows"] == 4
     assert tables["core_tasks"]["by_status"] == {"todo": 2, "archived": 1, "done": 1}
     assert tables["jobs_applications"]["by_status"] == {}  # empty, but it has a stage column

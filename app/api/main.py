@@ -282,7 +282,8 @@ def reject(action_id: int, request: DecisionRequest, agent: Agent = Depends(get_
 def _tables(conn: sqlite3.Connection) -> list[str]:
     rows = conn.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' "
-        "AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations' ORDER BY name"
+        "AND name NOT LIKE 'sqlite_%' AND substr(name, 1, 1) != '_' "  # _litestream_*, _backup_probe
+        "AND name != 'schema_migrations' ORDER BY name"
     )
     return [row[0] for row in rows]
 
