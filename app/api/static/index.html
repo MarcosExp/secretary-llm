@@ -13,7 +13,11 @@
 <body>
   <header>
     <h1>Secretary</h1>
-    <button id="new-chat" type="button" class="ghost"></button>
+    <nav>
+      <a id="dashboard-link" href="/dashboard" class="ghost"></a>
+      <a id="csv-link" href="/api/logs.csv" download class="ghost"></a>
+      <button id="new-chat" type="button" class="ghost"></button>
+    </nav>
   </header>
 
   <main id="messages" aria-live="polite"></main>

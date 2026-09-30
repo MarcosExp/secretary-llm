@@ -8,7 +8,7 @@ A personal organization agent (tasks, studies, calendar, training, job search) t
 
 1. **The LLM interprets and writes; code decides.** Queries, dates and schedules are resolved by SQL and the solver, not by the model.
 2. **Structured data in a database, context in Markdown.** Tasks and dates live in SQLite; decisions, rules and notes live in a wiki.
-3. **Never delete.** Everything is archived (`status = archived`). The agent has no delete tool.
+3. **The agent never deletes.** Things are archived (`status = archived`), and the agent has no delete tool. Rows that stay archived for 30 days are deleted by a daily job.
 4. **Confirmation for large changes.** The agent proposes a plan and only executes it after confirmation.
 5. **Swappable LLM provider.** Subscription, API or a fake provider for tests, selected with one environment variable.
 6. **Small MVP.** Tasks, calendar, memory and weekly review. Nothing else until that works.
@@ -78,7 +78,7 @@ The migrations are the source of truth: [`modules/core/migrations`](../modules/c
 Rules enforced by the database itself:
 
 - **Every table is prefixed with its module**, so ownership is visible in the name and access control (§6) is a prefix check.
-- **Nothing is ever deleted.** A `BEFORE DELETE` trigger on every table aborts the statement; rows are archived instead.
+- **Only long-archived rows can be deleted.** A `BEFORE DELETE` trigger on every table aborts the statement unless the row has been archived for 30 days (`archived_at`, set when a row is archived and cleared when it is reopened). Link rows and a course's units can go with them. The app runs each module's `purge.sql` once a day (and `secretary db purge` on demand), other modules first so they drop their links to core rows; imported rows leave their `external_ref` in `core_purged`, so a re-import does not bring them back. The module guard still refuses every `DELETE` from the agent.
 - **`CHECK` constraints** on statuses, priorities, ISO dates, `HH:MM` times, positive estimates and confidence 1-5. The Python layer validates first for clear error messages, and the constraints are the backstop.
 
 **Migrations:** each module owns `migrations/NNN_description.sql`, applied in order with core first. Every file runs in one transaction and is recorded with a checksum, so editing an applied migration is an error and schema changes always go in a new file. They run on app startup and on every CLI command.

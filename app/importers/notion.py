@@ -9,7 +9,8 @@ adds "Blocked" to the record's notes, so nothing the mapping can't express is lo
 
 Every imported row keeps "notion:<page id>" in external_ref. Running the import again
 only adds pages it has not seen and never overwrites rows, so Notion and Secretary
-can be used side by side during the transition.
+can be used side by side during the transition. Rows deleted after 30 days archived
+are remembered in core_purged and not imported again.
 
 The importer is trusted system code: it writes directly to several modules' tables
 in one transaction (all or nothing).
@@ -167,7 +168,7 @@ def run(conn, client: NotionClient, mappings: dict[str, Mapping], dry_run: bool 
                     importer = IMPORTERS[kind]
                     for page in client.pages(mappings[kind].database_id):
                         ref = f"notion:{page_id(page['id'])}"
-                        if _existing(conn, kind, ref) is not None:
+                        if _existing(conn, kind, ref) is not None or _purged(conn, ref):
                             report.skipped[kind] += 1
                             continue
                         if importer(conn, mappings[kind], page, ref):
@@ -186,6 +187,11 @@ TABLES = {"courses": "studies_courses", "study_units": "studies_units",
 def _existing(conn, kind: str, ref: str) -> int | None:
     row = conn.execute(f"SELECT id FROM {TABLES[kind]} WHERE external_ref = ?", (ref,)).fetchone()
     return row[0] if row else None
+
+
+def _purged(conn, ref: str) -> bool:
+    """Imported once, archived and deleted after 30 days: not imported again."""
+    return conn.execute("SELECT 1 FROM core_purged WHERE external_ref = ?", (ref,)).fetchone() is not None
 
 
 def _ref_id(conn, kind: str, notion_ids: list[str] | None) -> int | None:

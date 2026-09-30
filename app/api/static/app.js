@@ -6,14 +6,14 @@ const STRINGS = {
     needsConfirmation: "Needs your confirmation", confirm: "Confirm", reject: "Discard",
     micUnavailable: "Voice needs HTTPS (open the app through its Tailscale address).",
     micDenied: "Microphone permission denied.", tools: "tools", tokens: "tokens",
-    offline: "Could not reach the server.",
+    offline: "Could not reach the server.", dashboard: "Data", csv: "Tokens CSV",
   },
   es: {
     placeholder: "Mensaje…", newChat: "Nueva conversación", thinking: "Pensando…", transcribing: "Transcribiendo…",
     needsConfirmation: "Necesita tu confirmación", confirm: "Confirmar", reject: "Descartar",
     micUnavailable: "La voz necesita HTTPS (abre la app por su dirección de Tailscale).",
     micDenied: "Permiso de micrófono denegado.", tools: "herramientas", tokens: "tokens",
-    offline: "No se pudo conectar con el servidor.",
+    offline: "No se pudo conectar con el servidor.", dashboard: "Datos", csv: "CSV de tokens",
   },
 };
 const lang = navigator.language.toLowerCase().startsWith("es") ? "es" : "en";
@@ -29,6 +29,8 @@ const newChat = document.getElementById("new-chat");
 document.documentElement.lang = lang;
 input.placeholder = t("placeholder");
 newChat.textContent = t("newChat");
+document.getElementById("dashboard-link").textContent = t("dashboard");
+document.getElementById("csv-link").textContent = t("csv");
 
 // --- Local state: the visible transcript. The model's history lives on the server. ---
 

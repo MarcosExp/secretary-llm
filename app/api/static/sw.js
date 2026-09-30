@@ -1,11 +1,13 @@
 // Caches the app shell so it opens instantly and installs as an app.
 // API calls always go to the network: answers must never come from a cache.
 
-const CACHE = "secretary-v1";
+const CACHE = "secretary-v2";
 const SHELL = [
   "/",
   "/static/app.js",
   "/static/style.css",
+  "/dashboard",
+  "/static/dashboard.js",
   "/manifest.webmanifest",
   "/static/icons/icon.svg",
   "/static/icons/icon-192.png",

@@ -7,6 +7,7 @@
     secretary chat
     secretary pending | confirm 3 | reject 3
     secretary import notion [--dry-run]
+    secretary db purge
     secretary wiki init
 """
 
@@ -18,6 +19,7 @@ from datetime import date, timedelta
 from app import clock
 from app.db import connect, db_path
 from app.db.migrations import MigrationError, migrate
+from app.db.retention import purge_archived
 from app.db.seed import SeedError, seed_example
 from app.importers.notion import NotionImportError
 from modules.core import repo
@@ -90,6 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
     db = groups.add_parser("db", help="database maintenance").add_subparsers(dest="command", required=True)
     db.add_parser("migrate", help="apply pending migrations")
     db.add_parser("seed-example", help="load fictional example data into an empty database")
+    db.add_parser("purge", help="delete rows archived for more than 30 days (also runs daily in the app)")
 
     importer = groups.add_parser("import", help="import data from other tools").add_subparsers(
         dest="command", required=True)
@@ -266,6 +269,9 @@ def run(args: argparse.Namespace, conn: sqlite3.Connection) -> str:
         case "db", "seed-example":
             modules = seed_example(conn)
             return f"Example data loaded for: {', '.join(modules)}."
+        case "db", "purge":
+            deleted = purge_archived(conn)
+            return "Deleted: " + ", ".join(f"{n} from {t}" for t, n in deleted.items()) if deleted else "Nothing to delete."
         case "import", "notion":
             return import_notion(conn, args.dry_run)
         case "wiki", "init":

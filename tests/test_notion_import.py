@@ -2,6 +2,7 @@ import textwrap
 
 import pytest
 
+from app.db.retention import purge_archived
 from app.importers.notion import NotionClient, NotionImportError, load_mapping, plain, run
 
 MAPPING = """
@@ -204,3 +205,14 @@ def test_client_explains_permission_errors():
     client = NotionClient("secret", session=Session(Response(404)))
     with pytest.raises(NotionImportError, match="shared with the integration"):
         list(client.pages("db"))
+
+
+def test_rows_deleted_after_30_days_archived_are_not_imported_again(conn, mappings):
+    run(conn, FakeNotion(PAGES), mappings)
+    # "Networks" came in archived; pretend that was long ago.
+    conn.execute("UPDATE studies_courses SET archived_at = '2000-01-01' WHERE name = 'Networks'")
+    conn.commit()
+    assert purge_archived(conn) == {"studies_courses": 1}
+    report = run(conn, FakeNotion(PAGES), mappings)
+    assert sum(report.created.values()) == 0 and report.skipped["courses"] == 2
+    assert one(conn, "SELECT COUNT(*) FROM studies_courses WHERE name = 'Networks'")[0] == 0

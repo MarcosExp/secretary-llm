@@ -6,13 +6,20 @@ other sites send custom headers after a CORS preflight, which this app never
 approves, so a web page opened on the phone cannot drive the API (CSRF).
 """
 
+import asyncio
+import csv
+import io
+import json
+import logging
 import os
+import sqlite3
 import tempfile
 from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -21,6 +28,7 @@ from app.agent.orchestrator import PendingAction, Reply
 from app.api import conversations
 from app.db import connect
 from app.db.migrations import migrate
+from app.db.retention import purge_archived
 from app.llm import LLMError
 from app.sdk.errors import NotFound
 from app.voice import Transcriber, VoiceUnavailable, get_transcriber
@@ -28,6 +36,29 @@ from app.voice import Transcriber, VoiceUnavailable, get_transcriber
 STATIC = Path(__file__).parent / "static"
 CSRF_HEADER = "x-secretary"
 MAX_AUDIO_BYTES = 15 * 1024 * 1024
+PURGE_EVERY_S = 24 * 3600
+MAX_CELL_CHARS = 300  # long values (chat histories, notes) are cut in the data view
+
+log = logging.getLogger("secretary")
+
+
+def _purge() -> None:
+    conn = connect()
+    try:
+        deleted = purge_archived(conn)
+    finally:
+        conn.close()
+    if deleted:
+        log.info("purged rows archived for 30 days: %s", deleted)
+
+
+async def _purge_daily() -> None:
+    while True:
+        try:
+            await asyncio.to_thread(_purge)
+        except Exception:  # keep the app running; the next run tries again
+            log.exception("purge of archived rows failed")
+        await asyncio.sleep(PURGE_EVERY_S)
 
 
 @asynccontextmanager
@@ -38,7 +69,9 @@ async def lifespan(_: FastAPI):
         migrate(conn)
     finally:
         conn.close()
+    purger = asyncio.create_task(_purge_daily())
     yield
+    purger.cancel()
 
 
 app = FastAPI(title="Secretary", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
@@ -64,6 +97,16 @@ def get_agent():
 
 def get_voice() -> Transcriber:
     return get_transcriber()
+
+
+def get_db():
+    """A read-only connection for the data views."""
+    conn = connect(check_same_thread=False)
+    conn.execute("PRAGMA query_only = ON")
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 # --- Schemas ---
@@ -95,6 +138,19 @@ class DecisionRequest(BaseModel):
 
 class DecisionResponse(BaseModel):
     message: str
+
+
+class TableInfo(BaseModel):
+    name: str
+    rows: int
+    by_status: dict[str, int]  # count per status (or stage); empty if the table has none
+
+
+class TablePage(BaseModel):
+    name: str
+    columns: list[str]
+    rows: list[list]
+    total: int
 
 
 def _pending_out(actions: list[PendingAction]) -> list[PendingOut]:
@@ -144,6 +200,11 @@ def index() -> FileResponse:
 @app.get("/manifest.webmanifest", include_in_schema=False)
 def manifest() -> FileResponse:
     return FileResponse(STATIC / "manifest.webmanifest", media_type="application/manifest+json")
+
+
+@app.get("/dashboard", include_in_schema=False)
+def dashboard() -> FileResponse:
+    return FileResponse(STATIC / "dashboard.html")
 
 
 @app.get("/sw.js", include_in_schema=False)
@@ -214,3 +275,78 @@ def confirm(action_id: int, request: DecisionRequest, agent: Agent = Depends(get
 @app.post("/api/pending/{action_id}/reject", response_model=DecisionResponse)
 def reject(action_id: int, request: DecisionRequest, agent: Agent = Depends(get_agent)) -> DecisionResponse:
     return _decide(agent, action_id, request, confirm=False)
+
+
+# --- Data views (read-only) ---
+
+def _tables(conn: sqlite3.Connection) -> list[str]:
+    rows = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations' ORDER BY name"
+    )
+    return [row[0] for row in rows]
+
+
+def _columns(conn: sqlite3.Connection, table: str) -> list[str]:
+    return [row[1] for row in conn.execute(f'PRAGMA table_info("{table}")')]
+
+
+def _cell(value):
+    if isinstance(value, str) and len(value) > MAX_CELL_CHARS:
+        return value[:MAX_CELL_CHARS] + "…"
+    if isinstance(value, bytes):
+        return f"<{len(value)} bytes>"
+    return value
+
+
+@app.get("/api/tables", response_model=list[TableInfo])
+def tables(conn: sqlite3.Connection = Depends(get_db)) -> list[TableInfo]:
+    result = []
+    for table in _tables(conn):
+        rows = conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
+        by_status = {}
+        state = next((c for c in ("status", "stage") if c in _columns(conn, table)), None)
+        if state:
+            by_status = dict(conn.execute(
+                f'SELECT {state}, COUNT(*) FROM "{table}" GROUP BY {state} ORDER BY COUNT(*) DESC').fetchall())
+        result.append(TableInfo(name=table, rows=rows, by_status=by_status))
+    return result
+
+
+@app.get("/api/tables/{name}", response_model=TablePage)
+def table_rows(
+    name: str,
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> TablePage:
+    if name not in _tables(conn):  # the name is only interpolated after this check
+        raise HTTPException(404, f"unknown table {name}")
+    cursor = conn.execute(f'SELECT * FROM "{name}" ORDER BY rowid DESC LIMIT ? OFFSET ?', (limit, offset))
+    return TablePage(
+        name=name,
+        columns=[d[0] for d in cursor.description],
+        rows=[[_cell(v) for v in row] for row in cursor],
+        total=conn.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0],
+    )
+
+
+@app.get("/api/logs.csv", include_in_schema=False)
+def token_log_csv(conn: sqlite3.Connection = Depends(get_db)) -> Response:
+    """The agent log (one row per request) as CSV, for spreadsheets."""
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(["id", "timestamp_utc", "model", "input_tokens", "output_tokens",
+                     "tool_calls", "tools", "input"])
+    for row in conn.execute("SELECT * FROM core_agent_log ORDER BY id"):
+        try:
+            calls = json.loads(row["tools_called"] or "[]")
+        except json.JSONDecodeError:
+            calls = []
+        tools = " ".join(f"{c.get('module')}.{c.get('tool')}" for c in calls if isinstance(c, dict))
+        writer.writerow([row["id"], row["ts"], row["model"], row["input_tokens"], row["output_tokens"],
+                         len(calls), tools, row["input"]])
+    filename = f"secretary-tokens-{date.today():%Y%m%d}.csv"
+    # The BOM makes Excel read the file as UTF-8 (accents).
+    return Response("﻿" + out.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})

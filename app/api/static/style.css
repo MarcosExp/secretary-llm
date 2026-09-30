@@ -120,7 +120,9 @@ button {
   color: var(--accent-text);
 }
 button:disabled { opacity: 0.5; cursor: default; }
-button.ghost { background: transparent; color: var(--accent); padding: 6px 10px; }
+button.ghost, a.ghost { background: transparent; color: var(--accent); padding: 6px 10px; }
+a.ghost { text-decoration: none; font-size: 0.95rem; }
+header nav { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; justify-content: flex-end; }
 button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
 
 form {
@@ -157,3 +159,20 @@ button.icon svg { width: 22px; height: 22px; fill: currentColor; }
 #mic.recording { background: var(--danger); color: #fff; border-color: transparent; animation: pulse 1.2s infinite; }
 
 @keyframes pulse { 50% { opacity: 0.6; } }
+
+/* --- Data view (dashboard.html) --- */
+
+.dashboard main { gap: 16px; }
+.dashboard section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+.dashboard h2 { margin: 0 0 8px; font-size: 1rem; }
+.table-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.table-list button { text-align: left; background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+.table-list button[aria-pressed="true"] { border-color: var(--accent); }
+.table-list .count { font-weight: 600; }
+.table-list .states { display: block; font-size: 0.75rem; color: var(--muted); }
+.table-wrap { overflow-x: auto; }
+.data { border-collapse: collapse; font-size: 0.85rem; width: 100%; }
+.data th, .data td { border-bottom: 1px solid var(--border); padding: 4px 8px; text-align: left; vertical-align: top; }
+.data td { max-width: 320px; overflow-wrap: anywhere; }
+.data .null { color: var(--muted); }
+.pager { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 0.85rem; color: var(--muted); }

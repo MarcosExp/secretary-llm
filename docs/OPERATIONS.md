@@ -204,6 +204,21 @@ What happens:
 - Values with no mapping get a default and a warning, and the original value is kept in the notes.
 - Notion is only read, never modified.
 
+## Data view and token log
+
+- **Data** (`/dashboard`, linked from the app header) shows every table with its row count and a count per status, and the rows of the table you pick, newest first. It is read-only; long values are cut.
+- **Tokens CSV** (`/api/logs.csv`) downloads `core_agent_log`: one row per request with the time (UTC), models, input and output tokens, tool calls and your message. It opens directly in Excel or Sheets.
+
+## Archived rows
+
+Anything archived (tasks, areas, schedule blocks, courses, units, programs, applications) is deleted after 30 days, unless you reopen it first; archiving it again restarts the count. The app checks once a day and at startup. To run it by hand:
+
+```sh
+docker compose exec app secretary db purge
+```
+
+Areas and programs are kept while something still uses them; a course takes its units with it. Deleted rows stay recoverable through the backups' point-in-time history (30 days).
+
 ## Backups
 
 - **What:** the SQLite database, replicated continuously, with 30 days of point-in-time history and a daily snapshot.

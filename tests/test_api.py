@@ -1,4 +1,6 @@
+import csv
 import os
+import sqlite3
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -165,3 +167,54 @@ def test_history_is_trimmed_at_turn_boundaries():
     trimmed = conversations.trim(history, keep_turns=10)
     assert trimmed[0] == {"role": "user", "content": "turn 5"}
     assert len(trimmed) == 40
+
+
+def test_token_log_downloads_as_csv(client, setup):
+    setup.script(
+        tool_call("delegate_to_core", {"task": "add ink"}),
+        tool_call("add_task", {"title": "Buy ink, black"}),
+        text("Added."),
+        text("Añadido."),
+    )
+    chat(client, "añade tinta")
+    response = client.get("/api/logs.csv")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "attachment" in response.headers["content-disposition"]
+    body = response.content.decode("utf-8")
+    assert body.startswith("\ufeff")  # BOM, so Excel reads accents correctly
+    header, row = list(csv.reader(body.lstrip("\ufeff").splitlines()))
+    assert header[:6] == ["id", "timestamp_utc", "model", "input_tokens", "output_tokens", "tool_calls"]
+    assert row[5] == "1" and row[6] == "core.add_task" and row[7] == "añade tinta"
+
+
+def test_data_views_list_tables_and_rows(client, setup):
+    conn = connect(setup.db_path)
+    conn.executemany("INSERT INTO core_tasks (title, status) VALUES (?, ?)",
+                     [("a", "todo"), ("b", "todo"), ("c", "archived"), ("x" * 1000, "done")])
+    conn.commit()
+    conn.close()
+    assert "<title>Secretary · Data</title>" in client.get("/dashboard").text
+
+    tables = {t["name"]: t for t in client.get("/api/tables").json()}
+    assert "schema_migrations" not in tables
+    assert tables["core_tasks"]["rows"] == 4
+    assert tables["core_tasks"]["by_status"] == {"todo": 2, "archived": 1, "done": 1}
+    assert tables["jobs_applications"]["by_status"] == {}  # empty, but it has a stage column
+
+    page = client.get("/api/tables/core_tasks", params={"limit": 2, "offset": 0}).json()
+    assert page["total"] == 4 and len(page["rows"]) == 2
+    title = page["rows"][0][page["columns"].index("title")]
+    assert title.endswith("…") and len(title) == 301  # newest first, long values cut
+    assert "archived_at" in page["columns"]
+
+
+def test_data_views_are_read_only_and_reject_unknown_tables(client):
+    assert client.get("/api/tables/sqlite_master").status_code == 404
+    assert client.get('/api/tables/core_tasks"; DROP TABLE core_tasks; --').status_code == 404
+    assert client.get("/api/tables/core_tasks", params={"limit": 10_000}).status_code == 422
+    connection = main.get_db()
+    conn = next(connection)
+    with pytest.raises(sqlite3.OperationalError, match="readonly"):
+        conn.execute("INSERT INTO core_areas (name) VALUES ('x')")
+    connection.close()
