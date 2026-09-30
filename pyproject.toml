@@ -2,6 +2,7 @@
 name = "secretary"
 version = "0.1.0"
 description = "Personal organization agent: tasks, studies and calendar, by text and voice."
+license = { text = "MIT" }
 requires-python = ">=3.11"
 dependencies = [
     "anthropic>=1.9",
