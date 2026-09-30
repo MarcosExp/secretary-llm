@@ -77,7 +77,7 @@ I'd much rather you take the parts you like and shape them around how you work t
 You need Docker. By default there's no model behind it (it just replies that none is configured), so you can look around without any account or key.
 
 ```sh
-git clone https://github.com/MarcExpo/secretary-llm.git
+git clone https://github.com/MarcosExp/secretary-llm.git
 cd secretary-llm
 cp .env.example .env
 docker compose up -d --build
