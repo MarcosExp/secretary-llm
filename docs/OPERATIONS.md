@@ -175,7 +175,40 @@ How the agent uses them:
 - Every change the agent makes is a git commit (author `secretary`), so `git log` / `git revert` in that folder undo anything.
 - The agent cannot change `rules.md` or `profile.md` without your confirmation, so a text it reads elsewhere cannot rewrite your rules.
 
-To back the wiki up, add a private git remote to that folder and push, or include it in your server backups. It is not replicated by Litestream.
+### Wiki backup
+
+Litestream does not cover the wiki. Since it is a git repository, the simplest backup is a private remote plus [`scripts/wiki-sync.sh`](../scripts/wiki-sync.sh) on a timer:
+
+1. Create an empty **private** repository (GitHub, GitLab, Gitea…). On GitHub, add a **deploy key with write access** that only works for that repository:
+   ```sh
+   ssh-keygen -t ed25519 -N "" -f ~/.ssh/secretary_wiki
+   ```
+   Add an alias in `~/.ssh/config`, so this key is only used for the wiki:
+   ```
+   Host github-wiki
+       HostName github.com
+       IdentityFile ~/.ssh/secretary_wiki
+       IdentitiesOnly yes
+   ```
+2. Connect the wiki and push once:
+   ```sh
+   cd ../secretary-data/wiki
+   git remote add origin git@github-wiki:<you>/<wiki-repo>.git
+   WIKI_DIR=$PWD ../../secretary-llm/scripts/wiki-sync.sh
+   ```
+3. Run it every hour: edit the user and paths in [`deploy/systemd/`](../deploy/systemd/), then
+   ```sh
+   sudo cp deploy/systemd/secretary-wiki-sync.* /etc/systemd/system/
+   sudo systemctl daemon-reload && sudo systemctl enable --now secretary-wiki-sync.timer
+   ```
+
+What the script does:
+- It commits edits you made by hand.
+- It pulls edits made on the remote, for example in GitHub's web editor, before pushing. The agent sees them after the next run.
+- If both sides changed the same lines, it stops without touching anything and exits with an error.
+- To be warned when it stops working, point `WIKI_SYNC_PING_FILE` at a file holding a push-monitor URL (Uptime Kuma, healthchecks.io). The script calls it after every successful run.
+
+The remote holds your notes in plain text: pick a provider you are comfortable with.
 
 ## Importing from Notion
 
